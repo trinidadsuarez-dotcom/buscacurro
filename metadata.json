@@ -1,0 +1,6 @@
+{
+  "name": "Buscador de Empleo Local y Remoto",
+  "description": "Plataforma para localizar ofertas de empleo locales y remotas con filtros avanzados, adaptación de CV por IA, seguimiento de postulaciones y notificaciones en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

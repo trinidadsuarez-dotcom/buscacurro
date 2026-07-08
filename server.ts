@@ -1,0 +1,800 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { db } from "./server/db.ts";
+import { GoogleGenAI, Type } from "@google/genai";
+import dotenv from "dotenv";
+import { Job } from "./src/types.ts";
+
+dotenv.config();
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// Initialize Gemini API client
+const geminiApiKey = process.env.GEMINI_API_KEY;
+let aiClient: GoogleGenAI | null = null;
+
+if (geminiApiKey) {
+  aiClient = new GoogleGenAI({
+    apiKey: geminiApiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+} else {
+  console.warn("⚠️ Warning: GEMINI_API_KEY environment variable is missing.");
+}
+
+// ==========================================
+// API ROUTES
+// ==========================================
+
+// Auth Login / Registration
+app.post("/api/auth/login", (req, res) => {
+  const { email, name, role, location, industry } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: "El correo electrónico es requerido." });
+  }
+
+  let user = db.getUserByEmail(email);
+
+  if (!user) {
+    // Register new user
+    const newUser = {
+      id: `user-${Date.now()}`,
+      name: name || email.split('@')[0],
+      email,
+      role: role || 'candidate',
+      isVerified: false,
+      location: location || 'Madrid, España',
+      industry: industry || 'Tecnología',
+      cvText: role === 'candidate' ? 'Por favor escribe o pega tu currículum aquí.' : undefined
+    };
+    user = db.addUser(newUser);
+
+    // Welcome notification
+    db.addNotification({
+      id: `notif-${Date.now()}`,
+      userId: user.id,
+      message: `¡Bienvenido a TrabajoLocal, ${user.name}! Comienza completando tu perfil para verificarlo.`,
+      type: 'info',
+      read: false,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  res.json(user);
+});
+
+// Get User Profile
+app.get("/api/user/:id", (req, res) => {
+  const user = db.getUserById(req.params.id);
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado." });
+  res.json(user);
+});
+
+// Update User Profile
+app.put("/api/user/:id", (req, res) => {
+  const user = db.updateUser(req.params.id, req.body);
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado." });
+  res.json(user);
+});
+
+// Verify User Profile (Simulated Verification Badge)
+app.post("/api/user/:id/verify", (req, res) => {
+  const user = db.getUserById(req.params.id);
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado." });
+
+  const updatedUser = db.updateUser(req.params.id, {
+    isVerified: true,
+    verifiedAt: new Date().toISOString()
+  });
+
+  // Create real-time notification
+  const notificationId = `notif-${Date.now()}`;
+  db.addNotification({
+    id: notificationId,
+    userId: req.params.id,
+    message: `🎖️ ¡Felicidades! Tu perfil ha sido verificado como perfil auténtico. Ahora tienes el sello de confianza de la plataforma.`,
+    type: 'success',
+    read: false,
+    createdAt: new Date().toISOString(),
+    emailSentTo: user.email // Simulated email notification trigger
+  });
+
+  res.json(updatedUser);
+});
+
+// Get all Job postings with filters
+app.get("/api/jobs", (req, res) => {
+  const { industry, location, type, salaryMin } = req.query;
+  let jobs = db.getJobs();
+
+  if (industry && industry !== 'Todas') {
+    jobs = jobs.filter(j => j.industry === industry);
+  }
+
+  if (location && typeof location === 'string') {
+    const locClean = location.trim().toLowerCase();
+    if (locClean !== '') {
+      jobs = jobs.filter(j => 
+        j.location.toLowerCase().includes(locClean) || 
+        locClean.includes(j.location.toLowerCase())
+      );
+    }
+  }
+
+  if (type && type !== 'Todos') {
+    jobs = jobs.filter(j => j.type === type);
+  }
+
+  if (salaryMin) {
+    const minVal = parseInt(salaryMin as string, 10);
+    if (!isNaN(minVal)) {
+      jobs = jobs.filter(j => j.salaryMax >= minVal);
+    }
+  }
+
+  res.json(jobs);
+});
+
+// Get specific Job posting
+app.get("/api/jobs/:id", (req, res) => {
+  const job = db.getJobById(req.params.id);
+  if (!job) return res.status(404).json({ error: "Oferta de trabajo no encontrada." });
+  res.json(job);
+});
+
+// Post a new Job posting (recruiter only)
+app.post("/api/jobs", (req, res) => {
+  const { title, company, description, location, type, salaryMin, salaryMax, industry, recruiterId } = req.body;
+  
+  if (!title || !company || !description || !location || !recruiterId) {
+    return res.status(400).json({ error: "Campos requeridos faltantes." });
+  }
+
+  const recruiter = db.getUserById(recruiterId);
+  const isVerifiedCompany = recruiter ? recruiter.isVerified : false;
+
+  const newJob = {
+    id: `job-${Date.now()}`,
+    title,
+    company,
+    description,
+    location,
+    type: type || 'local',
+    salaryMin: Number(salaryMin) || 0,
+    salaryMax: Number(salaryMax) || 0,
+    industry: industry || 'Tecnología',
+    recruiterId,
+    postedAt: new Date().toISOString(),
+    isVerifiedCompany
+  };
+
+  const savedJob = db.addJob(newJob);
+  res.status(201).json(savedJob);
+});
+
+// Helper to fetch with timeout
+async function fetchWithTimeout(url: string, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
+      }
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
+// Helper to strip HTML tags and tidy text
+function cleanHtml(html: string): string {
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Endpoint to Import Jobs from external APIs, RSS feeds, or Scraping
+app.post("/api/jobs/import-external", async (req, res) => {
+  const { mode, query, rssUrl, scrapeUrl, rawContent, userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: "El ID de usuario (userId) es requerido." });
+  }
+
+  const user = db.getUserById(userId);
+  if (!user) {
+    return res.status(404).json({ error: "Usuario no encontrado." });
+  }
+
+  try {
+    // -------------------------------------------------------------
+    // MODE 1: PUBLIC JOBS API (Remotive Open API)
+    // -------------------------------------------------------------
+    if (mode === "api") {
+      const searchQuery = query || "react";
+      const apiUrl = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(searchQuery)}`;
+      
+      console.log(`[API Import] Fetching from Remotive: ${apiUrl}`);
+      const fetchRes = await fetchWithTimeout(apiUrl);
+      if (!fetchRes.ok) {
+        throw new Error(`La API pública de Remotive devolvió un error de conexión (${fetchRes.status})`);
+      }
+      
+      const data = await fetchRes.json() as any;
+      if (!data || !data.jobs || !Array.isArray(data.jobs)) {
+        throw new Error("Formato de respuesta desconocido de la API pública.");
+      }
+
+      const importedJobs: Job[] = [];
+      const currentJobs = db.getJobs();
+
+      // Take first 8 jobs to avoid flooding the DB
+      for (const item of data.jobs.slice(0, 8)) {
+        const uniqueId = `remotive-${item.id}`;
+        
+        // Skip duplicate
+        if (currentJobs.some(j => j.id === uniqueId)) {
+          continue;
+        }
+
+        // Parse salary Min/Max from text if present (e.g. "$60,000 - $80,000")
+        let salaryMin = 30000;
+        let salaryMax = 45000;
+        if (item.salary) {
+          const numbers = item.salary.match(/\d+[\d,.]*/g);
+          if (numbers && numbers.length > 0) {
+            const parsedNums = numbers
+              .map((n: string) => parseInt(n.replace(/[,.]/g, ''), 10))
+              .filter((num: number) => num > 1000);
+            if (parsedNums.length > 0) {
+              salaryMin = Math.min(...parsedNums);
+              salaryMax = parsedNums.length > 1 ? Math.max(...parsedNums) : salaryMin + 12000;
+            }
+          }
+        }
+
+        // Map Category to Industry field
+        let industry = "Tecnología";
+        const cat = (item.category || "").toLowerCase();
+        if (cat.includes("design") || cat.includes("creative") || cat.includes("ux")) {
+          industry = "Diseño";
+        } else if (cat.includes("marketing") || cat.includes("sales") || cat.includes("seo")) {
+          industry = "Marketing";
+        } else if (cat.includes("finance") || cat.includes("legal") || cat.includes("business")) {
+          industry = "Finanzas";
+        }
+
+        const cleanDesc = cleanHtml(item.description);
+        const excerptDesc = cleanDesc.length > 700 ? cleanDesc.slice(0, 700) + "...\n\n*(Oferta importada de Remotive API)*" : cleanDesc;
+
+        const newJob: Job = {
+          id: uniqueId,
+          title: item.title,
+          company: item.company_name,
+          description: excerptDesc,
+          location: item.candidate_required_location || "Remoto",
+          type: "remote",
+          salaryMin,
+          salaryMax,
+          industry,
+          recruiterId: "web-importer",
+          postedAt: item.publication_date ? new Date(item.publication_date).toISOString() : new Date().toISOString(),
+          isVerifiedCompany: true
+        };
+
+        db.addJob(newJob);
+        importedJobs.push(newJob);
+      }
+
+      // Add real-time notification
+      db.addNotification({
+        id: `notif-api-${Date.now()}`,
+        userId,
+        message: `🌐 Se buscaron ofertas de empleo en la API de Remotive sobre "${searchQuery}". Se importaron con éxito ${importedJobs.length} ofertas nuevas.`,
+        type: 'success',
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+
+      return res.json({ success: true, count: importedJobs.length, jobs: importedJobs });
+    }
+
+    // -------------------------------------------------------------
+    // MODE 2: RSS FEED PARSING VIA GEMINI
+    // -------------------------------------------------------------
+    else if (mode === "rss") {
+      const urlToFetch = rssUrl || "https://weworkremotely.com/categories/remote-programming-jobs.rss";
+      
+      console.log(`[RSS Import] Fetching RSS feed from: ${urlToFetch}`);
+      const fetchRes = await fetchWithTimeout(urlToFetch);
+      if (!fetchRes.ok) {
+        throw new Error(`No se pudo descargar el feed RSS de "${urlToFetch}" (Estado ${fetchRes.status})`);
+      }
+      
+      const xmlText = await fetchRes.text();
+      
+      if (!aiClient) {
+        throw new Error("La clave API de Gemini no está configurada para procesar los feeds RSS de forma inteligente.");
+      }
+
+      const prompt = `
+Analiza el siguiente fragmento de un documento XML de un RSS feed de ofertas de trabajo. Tu tarea es extraer hasta 6 ofertas de trabajo del canal y devolverlas en el formato JSON solicitado. Traduce los textos clave al español si están en inglés.
+
+XML del RSS:
+---
+${xmlText.slice(0, 14000)}
+---
+
+Esquema de salida:
+- title: Título del puesto en español.
+- company: Nombre de la empresa.
+- description: Un resumen conciso, atractivo y profesional de las funciones y requisitos en español (formato Markdown, sin HTML, máximo 650 caracteres).
+- location: Ubicación del puesto (e.g. "Remoto" o ciudad/país).
+- type: Estrictamente "local" o "remote".
+- salaryMin: Salario mínimo anual en EUR (número estimado de mercado o 0 si no se indica).
+- salaryMax: Salario máximo anual en EUR (número estimado de mercado o 0 si no se indica).
+- industry: Sector de la vacante ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+
+Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
+`;
+
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              jobs: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    company: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    location: { type: Type.STRING },
+                    type: { type: Type.STRING },
+                    salaryMin: { type: Type.INTEGER },
+                    salaryMax: { type: Type.INTEGER },
+                    industry: { type: Type.STRING }
+                  },
+                  required: ["title", "company", "description", "location", "type", "industry"]
+                }
+              }
+            },
+            required: ["jobs"]
+          }
+        }
+      });
+
+      const parsedResult = JSON.parse(response.text || "{}");
+      if (!parsedResult.jobs || !Array.isArray(parsedResult.jobs)) {
+        throw new Error("Gemini no pudo procesar la estructura de ofertas del XML.");
+      }
+
+      const importedJobs: Job[] = [];
+      const currentJobs = db.getJobs();
+
+      for (const item of parsedResult.jobs) {
+        // Skip duplicate combinations of title & company
+        const isDupe = currentJobs.some(
+          j => j.title.toLowerCase() === item.title.toLowerCase() && 
+               j.company.toLowerCase() === item.company.toLowerCase()
+        );
+        if (isDupe) continue;
+
+        const newJob: Job = {
+          id: `rss-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          title: item.title,
+          company: item.company,
+          description: `${item.description}\n\n*(Oferta importada de canal RSS)*`,
+          location: item.location || "Remoto",
+          type: (item.type === "local" || item.type === "remote") ? item.type : "remote",
+          salaryMin: Number(item.salaryMin) || 30000,
+          salaryMax: Number(item.salaryMax) || 45000,
+          industry: item.industry || "Tecnología",
+          recruiterId: "web-importer",
+          postedAt: new Date().toISOString(),
+          isVerifiedCompany: true
+        };
+
+        db.addJob(newJob);
+        importedJobs.push(newJob);
+      }
+
+      // Add notification
+      db.addNotification({
+        id: `notif-rss-${Date.now()}`,
+        userId,
+        message: `📻 Se importaron con éxito ${importedJobs.length} ofertas de empleo desde el canal RSS.`,
+        type: 'success',
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+
+      return res.json({ success: true, count: importedJobs.length, jobs: importedJobs });
+    }
+
+    // -------------------------------------------------------------
+    // MODE 3: WEB SCRAPING OF ANY JOB URL VIA GEMINI
+    // -------------------------------------------------------------
+    else if (mode === "scrape") {
+      if (!scrapeUrl) {
+        throw new Error("Se requiere la URL del sitio web para iniciar el scraping.");
+      }
+
+      let webpageContent = "";
+      let directFetchSucceeded = false;
+
+      console.log(`[Scrape Import] Attempting web scrap from URL: ${scrapeUrl}`);
+      try {
+        const fetchRes = await fetchWithTimeout(scrapeUrl);
+        if (fetchRes.ok) {
+          const rawHtml = await fetchRes.text();
+          webpageContent = cleanHtml(rawHtml).slice(0, 14000);
+          directFetchSucceeded = true;
+          console.log(`[Scrape Import] Successfully fetched webpage. Length: ${webpageContent.length}`);
+        } else {
+          throw new Error(`Error de red HTTP: ${fetchRes.status}`);
+        }
+      } catch (err) {
+        console.warn(`[Scrape Import] Direct crawl blocked or failed:`, err);
+        // Fallback to manual pasted raw content if provided
+        if (rawContent && rawContent.trim() !== '') {
+          webpageContent = rawContent;
+          console.log(`[Scrape Import] Using user manual raw pasted content fallback`);
+        } else {
+          throw new Error(`No pudimos raspar de forma directa la dirección web debido a restricciones de seguridad del portal o de red. Por favor copia y pega el texto de la oferta en el campo de texto manual de abajo.`);
+        }
+      }
+
+      if (!aiClient) {
+        throw new Error("El cliente de Gemini no está disponible para analizar la página web.");
+      }
+
+      const prompt = `
+Analiza el siguiente texto extraído de una oferta de empleo publicada en un portal web. Tu tarea es extraer la información estructurada de la vacante y traducirla o adaptarla al español con un formato limpio.
+
+Texto de la página web:
+---
+${webpageContent}
+---
+
+Esquema JSON requerido:
+1. title: Título en español de la oferta de trabajo.
+2. company: Nombre de la empresa ofertante.
+3. description: Descripción detallada y estructurada del puesto en español (puedes incluir requerimientos, funciones y beneficios). Formato Markdown. Máximo 1000 caracteres.
+4. location: Ubicación (ciudad, país o "Remoto").
+5. type: Estrictamente "local" o "remote".
+6. salaryMin: Salario anual mínimo estimado en EUR (número, usa 0 si no se menciona o no es deducible).
+7. salaryMax: Salario anual máximo estimado en EUR (número, usa 0 si no se menciona o no es deducible).
+8. industry: Sector de la oferta ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+
+Devuelve únicamente el objeto JSON con estos campos.
+`;
+
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              company: { type: Type.STRING },
+              description: { type: Type.STRING },
+              location: { type: Type.STRING },
+              type: { type: Type.STRING },
+              salaryMin: { type: Type.INTEGER },
+              salaryMax: { type: Type.INTEGER },
+              industry: { type: Type.STRING }
+            },
+            required: ["title", "company", "description", "location", "type", "industry"]
+          }
+        }
+      });
+
+      const parsedJob = JSON.parse(response.text || "{}");
+      if (!parsedJob.title || !parsedJob.company) {
+        throw new Error("No se pudo detectar un título de puesto o una empresa válidos en el texto de la página.");
+      }
+
+      const newJob: Job = {
+        id: `scraped-${Date.now()}`,
+        title: parsedJob.title,
+        company: parsedJob.company,
+        description: `${parsedJob.description}\n\n*(Oferta extraída mediante Web Scraping desde: ${scrapeUrl})*`,
+        location: parsedJob.location || "Remoto",
+        type: (parsedJob.type === "local" || parsedJob.type === "remote") ? parsedJob.type : "remote",
+        salaryMin: Number(parsedJob.salaryMin) || 0,
+        salaryMax: Number(parsedJob.salaryMax) || 0,
+        industry: parsedJob.industry || "Tecnología",
+        recruiterId: "web-importer",
+        postedAt: new Date().toISOString(),
+        isVerifiedCompany: false
+      };
+
+      db.addJob(newJob);
+
+      // Add notification
+      db.addNotification({
+        id: `notif-scrape-${Date.now()}`,
+        userId,
+        message: `🕷️ ¡Web Scraping exitoso! Se ha extraído, traducido e incorporado la vacante de "${newJob.title}" en "${newJob.company}" directamente a la bolsa de trabajo.`,
+        type: 'success',
+        read: false,
+        createdAt: new Date().toISOString()
+      });
+
+      return res.json({ success: true, directFetch: directFetchSucceeded, job: newJob });
+    }
+
+    res.status(400).json({ error: "Modo de importación desconocido o no admitido." });
+
+  } catch (error) {
+    console.error("Error in job import backend handler:", error);
+    res.status(500).json({ 
+      error: "Error al realizar la importación de la vacante.", 
+      details: error instanceof Error ? error.message : String(error) 
+    });
+  }
+});
+
+// Delete Job posting
+app.delete("/api/jobs/:id", (req, res) => {
+  const success = db.deleteJob(req.params.id);
+  if (success) {
+    res.json({ success: true, message: "Oferta de trabajo eliminada." });
+  } else {
+    res.status(404).json({ error: "Oferta de trabajo no encontrada." });
+  }
+});
+
+// Get all Applications
+app.get("/api/applications", (req, res) => {
+  const { candidateId, recruiterId } = req.query;
+  
+  if (candidateId) {
+    return res.json(db.getApplicationsByCandidate(candidateId as string));
+  } else if (recruiterId) {
+    return res.json(db.getApplicationsByRecruiter(recruiterId as string));
+  }
+  
+  res.json(db.getApplications());
+});
+
+// Submit Application
+app.post("/api/applications", (req, res) => {
+  const { jobId, candidateId, resumeTailored, coverLetterTailored } = req.body;
+
+  if (!jobId || !candidateId) {
+    return res.status(400).json({ error: "jobId y candidateId son requeridos." });
+  }
+
+  const job = db.getJobById(jobId);
+  if (!job) return res.status(404).json({ error: "Oferta de trabajo no encontrada." });
+
+  const candidate = db.getUserById(candidateId);
+  if (!candidate) return res.status(404).json({ error: "Candidato no encontrado." });
+
+  const newApp = {
+    id: `app-${Date.now()}`,
+    jobId,
+    candidateId,
+    status: 'Applied' as const,
+    appliedAt: new Date().toISOString(),
+    resumeTailored,
+    coverLetterTailored
+  };
+
+  const savedApp = db.addApplication(newApp);
+
+  // Notify recruiter
+  db.addNotification({
+    id: `notif-rec-${Date.now()}`,
+    userId: job.recruiterId,
+    message: `📨 Nueva postulación recibida de ${candidate.name} para la vacante "${job.title}".`,
+    type: 'info',
+    read: false,
+    createdAt: new Date().toISOString()
+  });
+
+  // Notify candidate
+  db.addNotification({
+    id: `notif-cand-${Date.now()}`,
+    userId: candidateId,
+    message: `✅ Has postulado con éxito al puesto de "${job.title}" en "${job.company}".`,
+    type: 'success',
+    read: false,
+    createdAt: new Date().toISOString(),
+    emailSentTo: candidate.email
+  });
+
+  res.status(201).json(savedApp);
+});
+
+// Update Application Status (Recruiter only)
+app.put("/api/applications/:id/status", (req, res) => {
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ error: "El estado es requerido." });
+
+  const appObj = db.getApplicationById(req.params.id);
+  if (!appObj) return res.status(404).json({ error: "Postulación no encontrada." });
+
+  const updatedApp = db.updateApplicationStatus(req.params.id, status);
+  
+  const candidate = db.getUserById(appObj.candidateId);
+  const statusLabels: Record<string, string> = {
+    'Applied': 'Postulado',
+    'Screening': 'Selección inicial',
+    'Interview': 'Entrevista programada',
+    'Offered': 'Oferta de empleo formal',
+    'Rejected': 'Postulación finalizada'
+  };
+
+  const label = statusLabels[status] || status;
+
+  // Add real-time notification
+  db.addNotification({
+    id: `notif-status-${Date.now()}`,
+    userId: appObj.candidateId,
+    message: `📢 El estado de tu solicitud para "${appObj.jobTitle}" en "${appObj.companyName}" ha cambiado a: **${label}**.`,
+    type: status === 'Offered' ? 'success' : status === 'Rejected' ? 'alert' : 'info',
+    read: false,
+    createdAt: new Date().toISOString(),
+    emailSentTo: candidate?.email
+  });
+
+  res.json(updatedApp);
+});
+
+// Get User Notifications
+app.get("/api/notifications", (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: "userId es requerido." });
+  res.json(db.getNotifications(userId as string));
+});
+
+// Mark all Notifications as Read
+app.post("/api/notifications/read-all", (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId es requerido." });
+  db.markAllNotificationsAsRead(userId);
+  res.json({ success: true });
+});
+
+// Mark single Notification as Read
+app.put("/api/notifications/:id/read", (req, res) => {
+  const success = db.markNotificationAsRead(req.params.id);
+  res.json({ success });
+});
+
+// GEMINI: Tailor CV to a specific Job description
+app.post("/api/gemini/tailor-cv", async (req, res) => {
+  const { cvText, jobTitle, jobCompany, jobDescription } = req.body;
+
+  if (!cvText || !jobTitle || !jobDescription) {
+    return res.status(400).json({ error: "Campos requeridos faltantes para la optimización." });
+  }
+
+  if (!aiClient) {
+    return res.status(503).json({ 
+      error: "El servicio de Inteligencia Artificial de Gemini no está disponible porque falta la clave de API." 
+    });
+  }
+
+  try {
+    const prompt = `
+Eres un reclutador experto y redactor profesional de currículums. Tu tarea es adaptar el currículum actual de un candidato de forma óptima a una oferta de trabajo específica.
+
+Aquí está el currículum actual del candidato:
+---
+${cvText}
+---
+
+Aquí están los detalles de la oferta de trabajo:
+- Título del Puesto: ${jobTitle}
+- Empresa: ${jobCompany || 'Confidencial'}
+- Descripción del Puesto: ${jobDescription}
+
+Debes optimizar el currículum de manera profesional y realista:
+1. Resalta las experiencias, proyectos y habilidades que coincidan directamente con los requisitos del puesto.
+2. Utiliza palabras clave relevantes extraídas de la descripción de la oferta.
+3. Asegúrate de mantener la veracidad de la información del candidato pero redactándola con mayor impacto y relevancia comercial.
+4. Genera también una Carta de Presentación (Carta de Motivación) altamente persuasiva de aproximadamente 3-4 párrafos que el candidato pueda enviar junto con este CV.
+
+Devuelve tu respuesta estructurada estrictamente bajo el siguiente esquema JSON con dos claves:
+- "resumeTailored": El currículum completamente adaptado y optimizado con formato Markdown profesional.
+- "coverLetterTailored": La carta de presentación profesional con formato Markdown.
+`;
+
+    const response = await aiClient.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            resumeTailored: { 
+              type: Type.STRING, 
+              description: "El currículum optimizado redactado en español con formato Markdown profesional." 
+            },
+            coverLetterTailored: { 
+              type: Type.STRING, 
+              description: "Una carta de presentación convincente redactada en español con formato Markdown." 
+            }
+          },
+          required: ["resumeTailored", "coverLetterTailored"]
+        }
+      }
+    });
+
+    const outputText = response.text;
+    if (!outputText) {
+      throw new Error("No se pudo obtener una respuesta válida de Gemini.");
+    }
+
+    const result = JSON.parse(outputText.trim());
+    res.json(result);
+
+  } catch (error) {
+    console.error("Gemini CV Tailoring Error:", error);
+    res.status(500).json({ 
+      error: "Ocurrió un error al procesar el CV con la IA de Gemini.", 
+      details: error instanceof Error ? error.message : String(error) 
+    });
+  }
+});
+
+// ==========================================
+// VITE AND STATIC SERVING
+// ==========================================
+
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();
