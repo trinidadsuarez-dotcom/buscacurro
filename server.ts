@@ -783,6 +783,178 @@ Devuelve tu respuesta estructurada estrictamente bajo el siguiente esquema JSON 
 });
 
 // ==========================================
+// AUTOMATIC DAILY JOB SYNCHRONIZATION
+// ==========================================
+
+async function runAutomaticJobSync() {
+  console.log("⏰ [Automatic Sync] Starting scheduled automatic job import...");
+  try {
+    // 1. Fetch from Remotive API for "react"
+    try {
+      const apiUrl = "https://remotive.com/api/remote-jobs?search=react";
+      console.log(`⏰ [Automatic Sync] Fetching Remotive API: ${apiUrl}`);
+      const fetchRes = await fetchWithTimeout(apiUrl, 8000);
+      if (fetchRes.ok) {
+        const data = await fetchRes.json() as any;
+        if (data && Array.isArray(data.jobs)) {
+          const currentJobs = db.getJobs();
+          let count = 0;
+          for (const item of data.jobs.slice(0, 8)) {
+            const uniqueId = `remotive-${item.id}`;
+            if (currentJobs.some(j => j.id === uniqueId)) continue;
+
+            let salaryMin = 30000;
+            let salaryMax = 45000;
+            if (item.salary) {
+              const numbers = item.salary.match(/\d+[\d,.]*/g);
+              if (numbers && numbers.length > 0) {
+                const parsedNums = numbers
+                  .map((n: string) => parseInt(n.replace(/[,.]/g, ''), 10))
+                  .filter((num: number) => num > 1000);
+                if (parsedNums.length > 0) {
+                  salaryMin = Math.min(...parsedNums);
+                  salaryMax = parsedNums.length > 1 ? Math.max(...parsedNums) : salaryMin + 12000;
+                }
+              }
+            }
+
+            let industry = "Tecnología";
+            const cat = (item.category || "").toLowerCase();
+            if (cat.includes("design") || cat.includes("creative") || cat.includes("ux")) {
+              industry = "Diseño";
+            } else if (cat.includes("marketing") || cat.includes("sales") || cat.includes("seo")) {
+              industry = "Marketing";
+            } else if (cat.includes("finance") || cat.includes("legal") || cat.includes("business")) {
+              industry = "Finanzas";
+            }
+
+            const cleanDesc = cleanHtml(item.description);
+            const excerptDesc = cleanDesc.length > 700 ? cleanDesc.slice(0, 700) + "...\n\n*(Oferta importada automáticamente de Remotive)*" : cleanDesc;
+
+            db.addJob({
+              id: uniqueId,
+              title: item.title,
+              company: item.company_name,
+              description: excerptDesc,
+              location: item.candidate_required_location || "Remoto",
+              type: "remote",
+              salaryMin,
+              salaryMax,
+              industry,
+              recruiterId: "web-importer",
+              postedAt: item.publication_date ? new Date(item.publication_date).toISOString() : new Date().toISOString(),
+              isVerifiedCompany: true
+            });
+            count++;
+          }
+          console.log(`⏰ [Automatic Sync] Successfully imported ${count} remote jobs from Remotive API.`);
+        }
+      }
+    } catch (err) {
+      console.error("❌ [Automatic Sync] Remotive API fetch failed:", err);
+    }
+
+    // 2. Fetch from RSS feed using Gemini if available
+    if (aiClient) {
+      try {
+        const rssUrl = "https://weworkremotely.com/categories/remote-programming-jobs.rss";
+        console.log(`⏰ [Automatic Sync] Fetching RSS feed: ${rssUrl}`);
+        const fetchRes = await fetchWithTimeout(rssUrl, 8000);
+        if (fetchRes.ok) {
+          const xmlText = await fetchRes.text();
+          const prompt = `
+Analiza el siguiente fragmento de un documento XML de un RSS feed de ofertas de trabajo. Tu tarea es extraer hasta 4 ofertas de trabajo del canal y devolverlas en el formato JSON solicitado. Traduce los textos clave al español si están en inglés.
+
+XML del RSS:
+---
+${xmlText.slice(0, 10000)}
+---
+
+Esquema de salida:
+- title: Título del puesto en español.
+- company: Nombre de la empresa.
+- description: Un resumen conciso, atractivo y profesional de las funciones y requisitos en español (formato Markdown, sin HTML, máximo 650 caracteres).
+- location: Ubicación del puesto (e.g. "Remoto" o ciudad/país).
+- type: Estrictamente "local" o "remote".
+- salaryMin: Salario mínimo anual en EUR (número estimado de mercado o 0 si no se indica).
+- salaryMax: Salario máximo anual en EUR (número estimado de mercado o 0 si no se indica).
+- industry: Sector de la vacante ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+
+Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
+`;
+          const aiResponse = await aiClient.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  jobs: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        title: { type: Type.STRING },
+                        company: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        location: { type: Type.STRING },
+                        type: { type: Type.STRING },
+                        salaryMin: { type: Type.INTEGER },
+                        salaryMax: { type: Type.INTEGER },
+                        industry: { type: Type.STRING }
+                      },
+                      required: ["title", "company", "description", "location", "type", "industry"]
+                    }
+                  }
+                },
+                required: ["jobs"]
+              }
+            }
+          });
+
+          const parsedResult = JSON.parse(aiResponse.text || "{}");
+          if (parsedResult.jobs && Array.isArray(parsedResult.jobs)) {
+            const currentJobs = db.getJobs();
+            let count = 0;
+            for (const item of parsedResult.jobs) {
+              const isDupe = currentJobs.some(
+                j => j.title.toLowerCase() === item.title.toLowerCase() && 
+                     j.company.toLowerCase() === item.company.toLowerCase()
+              );
+              if (isDupe) continue;
+
+              db.addJob({
+                id: `rss-auto-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+                title: item.title,
+                company: item.company,
+                description: `${item.description}\n\n*(Oferta importada automáticamente de feed RSS)*`,
+                location: item.location || "Remoto",
+                type: (item.type === "local" || item.type === "remote") ? item.type : "remote",
+                salaryMin: Number(item.salaryMin) || 30000,
+                salaryMax: Number(item.salaryMax) || 45000,
+                industry: item.industry || "Tecnología",
+                recruiterId: "web-importer",
+                postedAt: new Date().toISOString(),
+                isVerifiedCompany: true
+              });
+              count++;
+            }
+            console.log(`⏰ [Automatic Sync] Successfully imported ${count} jobs from WWR RSS Feed via Gemini.`);
+          }
+        }
+      } catch (err) {
+        console.error("❌ [Automatic Sync] WWR RSS sync failed:", err);
+      }
+    } else {
+      console.log("⚠️ [Automatic Sync] Skipping WWR RSS Feed import because Gemini API Key is missing.");
+    }
+  } catch (err) {
+    console.error("❌ [Automatic Sync] General background job sync error:", err);
+  }
+}
+
+// ==========================================
 // VITE AND STATIC SERVING
 // ==========================================
 
@@ -803,6 +975,16 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+    
+    // Trigger automatic synchronization 5 seconds after startup
+    setTimeout(() => {
+      runAutomaticJobSync();
+    }, 5000);
+
+    // Schedule synchronization to run every 24 hours (86400000 ms)
+    setInterval(() => {
+      runAutomaticJobSync();
+    }, 24 * 60 * 60 * 1000);
   });
 }
 

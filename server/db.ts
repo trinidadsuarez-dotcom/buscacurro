@@ -96,7 +96,21 @@ function initDB(): DatabaseSchema {
   if (fs.existsSync(DB_FILE)) {
     try {
       const content = fs.readFileSync(DB_FILE, 'utf-8');
-      return JSON.parse(content);
+      const parsed = JSON.parse(content);
+      // Ensure web-importer is always present in users list
+      if (parsed.users && !parsed.users.some((u: any) => u.id === 'web-importer')) {
+        parsed.users.push({
+          id: 'web-importer',
+          name: 'TrabajoLocal Importer',
+          email: 'importer@trabajolocal.com',
+          role: 'recruiter',
+          isVerified: true,
+          verifiedAt: new Date().toISOString(),
+          location: 'Global',
+          industry: 'Tecnología'
+        });
+      }
+      return parsed;
     } catch (e) {
       console.error("Error reading db.json, resetting database", e);
     }
@@ -104,6 +118,16 @@ function initDB(): DatabaseSchema {
 
   const initialSchema: DatabaseSchema = {
     users: [
+      {
+        id: 'web-importer',
+        name: 'TrabajoLocal Importer',
+        email: 'importer@trabajolocal.com',
+        role: 'recruiter',
+        isVerified: true,
+        verifiedAt: new Date().toISOString(),
+        location: 'Global',
+        industry: 'Tecnología'
+      },
       {
         id: 'candidate-demo',
         name: 'Trinidad Suárez',
@@ -286,6 +310,13 @@ async function initPostgresSchema() {
 
     console.log("🐘 [PostgreSQL] Schema matches successfully.");
 
+    // Always guarantee that the web-importer system user exists to prevent foreign key issues
+    await pool.query(`
+      INSERT INTO users (id, name, email, role, is_verified, verified_at, location, industry, cv_name, cv_text)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (id) DO NOTHING
+    `, ['web-importer', 'TrabajoLocal Importer', 'importer@trabajolocal.com', 'recruiter', true, new Date().toISOString(), 'Global', 'Tecnología', null, null]);
+
     // Load actual DB rows from PostgreSQL
     const usersRes = await pool.query("SELECT * FROM users");
     const jobsRes = await pool.query("SELECT * FROM jobs");
@@ -307,6 +338,20 @@ async function initPostgresSchema() {
         cvName: u.cv_name,
         cvText: u.cv_text
       }));
+
+      // Double check that 'web-importer' is in mappedUsers cache
+      if (!mappedUsers.some(u => u.id === 'web-importer')) {
+        mappedUsers.push({
+          id: 'web-importer',
+          name: 'TrabajoLocal Importer',
+          email: 'importer@trabajolocal.com',
+          role: 'recruiter',
+          isVerified: true,
+          verifiedAt: new Date().toISOString(),
+          location: 'Global',
+          industry: 'Tecnología'
+        });
+      }
 
       const mappedJobs: Job[] = jobsRes.rows.map((j: any) => ({
         id: j.id,
