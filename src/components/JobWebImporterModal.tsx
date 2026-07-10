@@ -29,9 +29,11 @@ interface JobWebImporterModalProps {
 }
 
 const PRESET_FEEDS = [
+  { name: 'Google News (Marketing Digital)', url: 'https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google News (Marketing Online)', url: 'https://news.google.com/rss/search?q=marketing+online+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google Search Jobs (Marketing Digital)', url: 'https://www.google.com/search?q=marketing+digital&udm=8' },
   { name: 'We Work Remotely (Programación)', url: 'https://weworkremotely.com/categories/remote-programming-jobs.rss' },
-  { name: 'RemoteOK (Todas)', url: 'https://remoteok.com/remote-jobs.rss' },
-  { name: 'We Work Remotely (Diseño)', url: 'https://weworkremotely.com/categories/remote-design-jobs.rss' }
+  { name: 'RemoteOK (Todas)', url: 'https://remoteok.com/remote-jobs.rss' }
 ];
 
 export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
@@ -48,10 +50,11 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
 
   // Tab State Values
   const [apiQuery, setApiQuery] = useState('react');
-  const [rssUrl, setRssUrl] = useState('https://weworkremotely.com/categories/remote-programming-jobs.rss');
+  const [rssUrl, setRssUrl] = useState('https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es');
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [rawContent, setRawContent] = useState('');
   const [showRawContentInput, setShowRawContentInput] = useState(false);
+  const [useAi, setUseAi] = useState(false); // Default to false to prioritize fast, non-Gemini scraping/parsing
 
   const triggerImport = async () => {
     setIsLoading(true);
@@ -72,7 +75,7 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
       steps = [
         "Conectando al servidor del feed RSS...",
         "Descargando XML de ofertas...",
-        "Enviando XML a la IA de Gemini para análisis y traducción...",
+        useAi ? "Enviando XML a la IA de Gemini para análisis y traducción..." : "Analizando XML con extractor manual rápido (Sin usar IA)...",
         "Estructurando e insertando en la base de datos..."
       ];
     } else {
@@ -98,7 +101,8 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
     try {
       const body: any = {
         mode: activeTab,
-        userId: currentUser.id
+        userId: currentUser.id,
+        useAi: useAi
       };
 
       if (activeTab === 'api') {
@@ -359,13 +363,32 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
                       placeholder="https://servidor.com/feed-empleo.xml"
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 font-mono text-gray-600"
                     />
+                    {rssUrl.includes("google.com/search") || rssUrl.includes("google.es/search") || rssUrl.includes("google.cl/search") || rssUrl.includes("google.com.mx/search") ? (
+                      <p className="text-[10px] text-amber-600 font-medium animate-pulse">
+                        ✨ ¡Búsqueda de Google detectada! El sistema la convertirá automáticamente a un canal RSS de empleo para evitar bloqueos.
+                      </p>
+                    ) : null}
                   </div>
+
+                  {/* Toggle Use AI */}
+                  <label className="flex items-center gap-2.5 cursor-pointer p-2.5 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={useAi}
+                      onChange={(e) => setUseAi(e.target.checked)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <div className="text-left">
+                      <span className="text-xs font-bold text-gray-800 block">Utilizar Inteligencia Artificial (Gemini)</span>
+                      <span className="text-[10px] text-gray-500 block">Si se desactiva (por defecto), se usará el extractor local ultra rápido sin gastar cuota de IA.</span>
+                    </div>
+                  </label>
 
                   <button
                     onClick={triggerImport}
                     className="w-full rounded-lg bg-indigo-600 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 transition-colors"
                   >
-                    Escanear e Importar RSS con Gemini
+                    {useAi ? "Escanear e Importar RSS con Gemini" : "Escanear e Importar RSS (Rápido sin IA)"}
                   </button>
                 </div>
               )}
@@ -391,7 +414,13 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
                       placeholder="https://portalempleo.com/oferta/desarrollador-web-senior-123"
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
                     />
-                    <span className="text-[10px] text-gray-400">Puedes ingresar enlaces de portales públicos de empleo, blogs corporativos de talento o cualquier URL que contenga la descripción.</span>
+                    {scrapeUrl.includes("google.com/search") || scrapeUrl.includes("google.es/search") || scrapeUrl.includes("google.cl/search") || scrapeUrl.includes("google.com.mx/search") ? (
+                      <p className="text-[10px] text-amber-600 font-medium animate-pulse">
+                        ✨ ¡Búsqueda de Google detectada! Se redirigirá automáticamente a un feed RSS de empleo para evitar bloqueos y no consumir tokens de IA.
+                      </p>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">Puedes ingresar enlaces de portales públicos de empleo, blogs corporativos de talento o cualquier URL que contenga la descripción.</span>
+                    )}
                   </div>
 
                   {/* Fallback Paste Toggle */}

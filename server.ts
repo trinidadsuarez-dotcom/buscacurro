@@ -225,6 +225,28 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
+// Preprocess URLs (e.g. to convert Google Search Jobs URLs to Google News RSS feeds)
+function preprocessUrl(url: string): string {
+  try {
+    const trimmed = url.trim();
+    if (trimmed.includes("google.com/search") || trimmed.includes("google.es/search") || trimmed.includes("google.cl/search") || trimmed.includes("google.com.mx/search") || trimmed.includes("google.com.ar/search")) {
+      const urlObj = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+      const q = urlObj.searchParams.get("q");
+      if (q) {
+        const queryTerm = q.trim();
+        let finalQuery = queryTerm;
+        if (!queryTerm.toLowerCase().includes("empleo") && !queryTerm.toLowerCase().includes("trabajo") && !queryTerm.toLowerCase().includes("vacante")) {
+          finalQuery = `${queryTerm} empleo OR vacante OR trabajo`;
+        }
+        return `https://news.google.com/rss/search?q=${encodeURIComponent(finalQuery)}&hl=es&gl=ES&ceid=ES:es`;
+      }
+    }
+    return trimmed;
+  } catch (err) {
+    return url;
+  }
+}
+
 // Fallback Helper to parse RSS XML manually without requiring Gemini API
 function parseRssXmlManually(xmlText: string, feedUrl: string = ''): any[] {
   const jobs: any[] = [];
@@ -395,7 +417,7 @@ function parseRssXmlManually(xmlText: string, feedUrl: string = ''): any[] {
 
 // Endpoint to Import Jobs from external APIs, RSS feeds, or Scraping
 app.post("/api/jobs/import-external", async (req, res) => {
-  const { mode, query, rssUrl, scrapeUrl, rawContent, userId } = req.body;
+  const { mode, query, rssUrl, scrapeUrl, rawContent, userId, useAi } = req.body;
 
   if (!userId) {
     return res.status(400).json({ error: "El ID de usuario (userId) es requerido." });
@@ -406,11 +428,25 @@ app.post("/api/jobs/import-external", async (req, res) => {
     return res.status(404).json({ error: "Usuario no encontrado." });
   }
 
+  let activeMode = mode;
+  let activeRssUrl = rssUrl;
+  let activeScrapeUrl = scrapeUrl;
+
+  const inputUrl = rssUrl || scrapeUrl || "";
+  if (inputUrl && (inputUrl.includes("google.com/search") || inputUrl.includes("google.es/search") || inputUrl.includes("google.cl/search") || inputUrl.includes("google.com.mx/search") || inputUrl.includes("google.com.ar/search"))) {
+    const preprocessed = preprocessUrl(inputUrl);
+    if (preprocessed !== inputUrl) {
+      activeMode = "rss";
+      activeRssUrl = preprocessed;
+      console.log(`[Google Search Interceptor] Intercepted Google search URL and converted to Google News RSS feed URL: ${preprocessed}`);
+    }
+  }
+
   try {
     // -------------------------------------------------------------
     // MODE 1: PUBLIC JOBS API (Remotive Open API)
     // -------------------------------------------------------------
-    if (mode === "api") {
+    if (activeMode === "api") {
       const searchQuery = query || "react";
       const apiUrl = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(searchQuery)}`;
       
@@ -502,8 +538,8 @@ app.post("/api/jobs/import-external", async (req, res) => {
     // -------------------------------------------------------------
     // MODE 2: RSS FEED PARSING VIA GEMINI
     // -------------------------------------------------------------
-    else if (mode === "rss") {
-      const urlToFetch = rssUrl || "https://weworkremotely.com/categories/remote-programming-jobs.rss";
+    else if (activeMode === "rss") {
+      const urlToFetch = activeRssUrl || "https://weworkremotely.com/categories/remote-programming-jobs.rss";
       
       console.log(`[RSS Import] Fetching RSS feed from: ${urlToFetch}`);
       const fetchRes = await fetchWithTimeout(urlToFetch);
@@ -515,7 +551,8 @@ app.post("/api/jobs/import-external", async (req, res) => {
       let parsedResult: any = null;
       let usedGemini = false;
 
-      if (aiClient) {
+      // Only parse using Gemini if useAi is explicitly set to true, to respect user preference and avoid quotas
+      if (useAi === true && aiClient) {
         try {
           const prompt = `
 Analiza el siguiente fragmento de un documento XML de un RSS feed de ofertas de trabajo. Tu tarea es extraer hasta 6 ofertas de trabajo del canal y devolverlas en el formato JSON solicitado. Traduce los textos clave al español si están en inglés.
@@ -632,17 +669,17 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
     // -------------------------------------------------------------
     // MODE 3: WEB SCRAPING OF ANY JOB URL VIA GEMINI
     // -------------------------------------------------------------
-    else if (mode === "scrape") {
-      if (!scrapeUrl) {
+    else if (activeMode === "scrape") {
+      if (!activeScrapeUrl) {
         throw new Error("Se requiere la URL del sitio web para iniciar el scraping.");
       }
 
       let webpageContent = "";
       let directFetchSucceeded = false;
 
-      console.log(`[Scrape Import] Attempting web scrap from URL: ${scrapeUrl}`);
+      console.log(`[Scrape Import] Attempting web scrap from URL: ${activeScrapeUrl}`);
       try {
-        const fetchRes = await fetchWithTimeout(scrapeUrl);
+        const fetchRes = await fetchWithTimeout(activeScrapeUrl);
         if (fetchRes.ok) {
           const rawHtml = await fetchRes.text();
           webpageContent = cleanHtml(rawHtml).slice(0, 14000);
@@ -718,7 +755,7 @@ Devuelve únicamente el objeto JSON con estos campos.
         id: `scraped-${Date.now()}`,
         title: parsedJob.title,
         company: parsedJob.company,
-        description: `${parsedJob.description}\n\n*(Oferta extraída mediante Web Scraping desde: ${scrapeUrl})*`,
+        description: `${parsedJob.description}\n\n*(Oferta extraída mediante Web Scraping desde: ${activeScrapeUrl})*`,
         location: parsedJob.location || "Remoto",
         type: (parsedJob.type === "local" || parsedJob.type === "remote") ? parsedJob.type : "remote",
         salaryMin: Number(parsedJob.salaryMin) || 0,
@@ -1036,9 +1073,10 @@ async function runAutomaticJobSync() {
     console.error("❌ [Automatic Sync] Remotive API fetch failed:", err);
   }
 
-  // 2. Fetch from the 10 RSS feeds (fully manual, no Gemini API to avoid rate limits/quota)
+  // 2. Fetch from the 11 RSS feeds (fully manual, no Gemini API to avoid rate limits/quota)
   const feedsToSync = [
     { name: "Google News - Marketing Digital", url: "https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
+    { name: "Google News - Marketing Online", url: "https://news.google.com/rss/search?q=marketing+online+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
     { name: "Google News - SEO", url: "https://news.google.com/rss/search?q=seo+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
     { name: "Google News - Social Media", url: "https://news.google.com/rss/search?q=social+media+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
     { name: "Google News - Copywriter", url: "https://news.google.com/rss/search?q=copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
