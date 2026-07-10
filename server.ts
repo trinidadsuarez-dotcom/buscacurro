@@ -225,6 +225,65 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
+// Fallback Helper to parse RSS XML manually without requiring Gemini API
+function parseRssXmlManually(xmlText: string): any[] {
+  const jobs: any[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRegex.exec(xmlText)) !== null && jobs.length < 10) {
+    const content = match[1];
+    
+    // Extract title
+    const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
+    let titleRaw = titleMatch ? titleMatch[1].trim() : "Oferta de Empleo Remoto";
+    // Clean CDATA
+    titleRaw = titleRaw.replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/i, '$1')
+                       .replace(/<!\[CDATA\[/gi, '')
+                       .replace(/\]\]>/gi, '')
+                       .trim();
+    
+    // Extract description
+    const descMatch = content.match(/<description>([\s\S]*?)<\/description>/i);
+    let descRaw = descMatch ? descMatch[1].trim() : "Consulte los detalles del puesto en el sitio original.";
+    // Clean CDATA
+    descRaw = descRaw.replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/i, '$1')
+                     .replace(/<!\[CDATA\[/gi, '')
+                     .replace(/\]\]>/gi, '')
+                     .trim();
+    
+    descRaw = cleanHtml(descRaw);
+    if (descRaw.length > 600) {
+      descRaw = descRaw.slice(0, 600) + "...";
+    }
+
+    // Split title and company (WWR titles are like "Job Title: Company Name" or "Company Name: Job Title" or "Job Title at Company Name")
+    let title = titleRaw;
+    let company = "Empresa Remota";
+    
+    if (titleRaw.includes(" at ")) {
+      const parts = titleRaw.split(" at ");
+      title = parts[0].trim();
+      company = parts.slice(1).join(" at ").trim();
+    } else if (titleRaw.includes(": ")) {
+      const parts = titleRaw.split(": ");
+      company = parts[0].trim();
+      title = parts.slice(1).join(": ").trim();
+    }
+
+    jobs.push({
+      title,
+      company,
+      description: descRaw,
+      location: "Remoto",
+      type: "remote",
+      salaryMin: 35000,
+      salaryMax: 50000,
+      industry: "Tecnología"
+    });
+  }
+  return jobs;
+}
+
 // Endpoint to Import Jobs from external APIs, RSS feeds, or Scraping
 app.post("/api/jobs/import-external", async (req, res) => {
   const { mode, query, rssUrl, scrapeUrl, rawContent, userId } = req.body;
@@ -344,12 +403,12 @@ app.post("/api/jobs/import-external", async (req, res) => {
       }
       
       const xmlText = await fetchRes.text();
-      
-      if (!aiClient) {
-        throw new Error("La clave API de Gemini no está configurada para procesar los feeds RSS de forma inteligente.");
-      }
+      let parsedResult: any = null;
+      let usedGemini = false;
 
-      const prompt = `
+      if (aiClient) {
+        try {
+          const prompt = `
 Analiza el siguiente fragmento de un documento XML de un RSS feed de ofertas de trabajo. Tu tarea es extraer hasta 6 ofertas de trabajo del canal y devolverlas en el formato JSON solicitado. Traduce los textos clave al español si están en inglés.
 
 XML del RSS:
@@ -370,40 +429,50 @@ Esquema de salida:
 Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
 `;
 
-      const response = await aiClient.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              jobs: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    company: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    location: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    salaryMin: { type: Type.INTEGER },
-                    salaryMax: { type: Type.INTEGER },
-                    industry: { type: Type.STRING }
-                  },
-                  required: ["title", "company", "description", "location", "type", "industry"]
-                }
+          const response = await aiClient.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  jobs: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        title: { type: Type.STRING },
+                        company: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        location: { type: Type.STRING },
+                        type: { type: Type.STRING },
+                        salaryMin: { type: Type.INTEGER },
+                        salaryMax: { type: Type.INTEGER },
+                        industry: { type: Type.STRING }
+                      },
+                      required: ["title", "company", "description", "location", "type", "industry"]
+                    }
+                  }
+                },
+                required: ["jobs"]
               }
-            },
-            required: ["jobs"]
-          }
-        }
-      });
+            }
+          });
 
-      const parsedResult = JSON.parse(response.text || "{}");
-      if (!parsedResult.jobs || !Array.isArray(parsedResult.jobs)) {
-        throw new Error("Gemini no pudo procesar la estructura de ofertas del XML.");
+          parsedResult = JSON.parse(response.text || "{}");
+          if (parsedResult.jobs && Array.isArray(parsedResult.jobs)) {
+            usedGemini = true;
+          }
+        } catch (apiErr: any) {
+          console.warn("⚠️ [Gemini RSS Parsing Failed / Quota Exceeded] Falling back to manual RSS parser:", apiErr.message || apiErr);
+        }
+      }
+
+      if (!parsedResult || !parsedResult.jobs || !Array.isArray(parsedResult.jobs)) {
+        console.log("ℹ️ [RSS Parser] Extracting RSS jobs manually (fallback)...");
+        const manualJobs = parseRssXmlManually(xmlText);
+        parsedResult = { jobs: manualJobs };
       }
 
       const importedJobs: Job[] = [];
@@ -421,7 +490,7 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
           id: `rss-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
           title: item.title,
           company: item.company,
-          description: `${item.description}\n\n*(Oferta importada de canal RSS)*`,
+          description: usedGemini ? `${item.description}\n\n*(Oferta importada de canal RSS)*` : `${item.description}\n\n*(Oferta importada de canal RSS - Extracción Automática)*`,
           location: item.location || "Remoto",
           type: (item.type === "local" || item.type === "remote") ? item.type : "remote",
           salaryMin: Number(item.salaryMin) || 30000,
@@ -440,7 +509,9 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
       db.addNotification({
         id: `notif-rss-${Date.now()}`,
         userId,
-        message: `📻 Se importaron con éxito ${importedJobs.length} ofertas de empleo desde el canal RSS.`,
+        message: usedGemini 
+          ? `📻 Se importaron con éxito ${importedJobs.length} ofertas de empleo desde el canal RSS de forma inteligente.`
+          : `📻 Se importaron con éxito ${importedJobs.length} ofertas de empleo desde el canal RSS usando el extractor de respaldo (cuota Gemini limitada).`,
         type: 'success',
         read: false,
         createdAt: new Date().toISOString()
@@ -854,15 +925,20 @@ async function runAutomaticJobSync() {
       console.error("❌ [Automatic Sync] Remotive API fetch failed:", err);
     }
 
-    // 2. Fetch from RSS feed using Gemini if available
-    if (aiClient) {
-      try {
-        const rssUrl = "https://weworkremotely.com/categories/remote-programming-jobs.rss";
-        console.log(`⏰ [Automatic Sync] Fetching RSS feed: ${rssUrl}`);
-        const fetchRes = await fetchWithTimeout(rssUrl, 8000);
-        if (fetchRes.ok) {
-          const xmlText = await fetchRes.text();
-          const prompt = `
+    // 2. Fetch from RSS feed
+    try {
+      const rssUrl = "https://weworkremotely.com/categories/remote-programming-jobs.rss";
+      console.log(`⏰ [Automatic Sync] Fetching RSS feed: ${rssUrl}`);
+      const fetchRes = await fetchWithTimeout(rssUrl, 8000);
+      if (fetchRes.ok) {
+        const xmlText = await fetchRes.text();
+        let parsedResult: any = null;
+        let usedGemini = false;
+
+        if (aiClient) {
+          try {
+            console.log(`⏰ [Automatic Sync] Attempting to parse RSS feed with Gemini AI...`);
+            const prompt = `
 Analiza el siguiente fragmento de un documento XML de un RSS feed de ofertas de trabajo. Tu tarea es extraer hasta 4 ofertas de trabajo del canal y devolverlas en el formato JSON solicitado. Traduce los textos clave al español si están en inglés.
 
 XML del RSS:
@@ -882,72 +958,85 @@ Esquema de salida:
 
 Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
 `;
-          const aiResponse = await aiClient.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: prompt,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  jobs: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        title: { type: Type.STRING },
-                        company: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        location: { type: Type.STRING },
-                        type: { type: Type.STRING },
-                        salaryMin: { type: Type.INTEGER },
-                        salaryMax: { type: Type.INTEGER },
-                        industry: { type: Type.STRING }
-                      },
-                      required: ["title", "company", "description", "location", "type", "industry"]
+            const aiResponse = await aiClient.models.generateContent({
+              model: "gemini-3.5-flash",
+              contents: prompt,
+              config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    jobs: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING },
+                          company: { type: Type.STRING },
+                          description: { type: Type.STRING },
+                          location: { type: Type.STRING },
+                          type: { type: Type.STRING },
+                          salaryMin: { type: Type.INTEGER },
+                          salaryMax: { type: Type.INTEGER },
+                          industry: { type: Type.STRING }
+                        },
+                        required: ["title", "company", "description", "location", "type", "industry"]
+                      }
                     }
-                  }
-                },
-                required: ["jobs"]
+                  },
+                  required: ["jobs"]
+                }
               }
-            }
-          });
+            });
 
-          const parsedResult = JSON.parse(aiResponse.text || "{}");
-          if (parsedResult.jobs && Array.isArray(parsedResult.jobs)) {
-            const currentJobs = db.getJobs();
-            let count = 0;
-            for (const item of parsedResult.jobs) {
-              const isDupe = currentJobs.some(
-                j => j.title.toLowerCase() === item.title.toLowerCase() && 
-                     j.company.toLowerCase() === item.company.toLowerCase()
-              );
-              if (isDupe) continue;
-
-              db.addJob({
-                id: `rss-auto-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-                title: item.title,
-                company: item.company,
-                description: `${item.description}\n\n*(Oferta importada automáticamente de feed RSS)*`,
-                location: item.location || "Remoto",
-                type: (item.type === "local" || item.type === "remote") ? item.type : "remote",
-                salaryMin: Number(item.salaryMin) || 30000,
-                salaryMax: Number(item.salaryMax) || 45000,
-                industry: item.industry || "Tecnología",
-                recruiterId: "web-importer",
-                postedAt: new Date().toISOString(),
-                isVerifiedCompany: true
-              });
-              count++;
+            parsedResult = JSON.parse(aiResponse.text || "{}");
+            if (parsedResult.jobs && Array.isArray(parsedResult.jobs)) {
+              usedGemini = true;
             }
-            console.log(`⏰ [Automatic Sync] Successfully imported ${count} jobs from WWR RSS Feed via Gemini.`);
+          } catch (err: any) {
+            console.warn("⚠️ [Automatic Sync] Gemini parsing failed/quota exceeded, falling back to manual parser:", err.message || err);
           }
         }
-      } catch (err) {
-        console.error("❌ [Automatic Sync] WWR RSS sync failed:", err);
+
+        if (!parsedResult || !parsedResult.jobs || !Array.isArray(parsedResult.jobs)) {
+          console.log("⏰ [Automatic Sync] Extracting RSS jobs manually (fallback)...");
+          const manualJobs = parseRssXmlManually(xmlText);
+          parsedResult = { jobs: manualJobs };
+        }
+
+        if (parsedResult.jobs && Array.isArray(parsedResult.jobs)) {
+          const currentJobs = db.getJobs();
+          let count = 0;
+          for (const item of parsedResult.jobs) {
+            const isDupe = currentJobs.some(
+              j => j.title.toLowerCase() === item.title.toLowerCase() && 
+                   j.company.toLowerCase() === item.company.toLowerCase()
+            );
+            if (isDupe) continue;
+
+            db.addJob({
+              id: `rss-auto-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              title: item.title,
+              company: item.company,
+              description: usedGemini 
+                ? `${item.description}\n\n*(Oferta importada automáticamente de feed RSS)*` 
+                : `${item.description}\n\n*(Oferta importada automáticamente de feed RSS - Extracción de Respaldo)*`,
+              location: item.location || "Remoto",
+              type: (item.type === "local" || item.type === "remote") ? item.type : "remote",
+              salaryMin: Number(item.salaryMin) || 30000,
+              salaryMax: Number(item.salaryMax) || 45000,
+              industry: item.industry || "Tecnología",
+              recruiterId: "web-importer",
+              postedAt: new Date().toISOString(),
+              isVerifiedCompany: true
+            });
+            count++;
+          }
+          console.log(`⏰ [Automatic Sync] Successfully imported ${count} jobs from WWR RSS Feed.`);
+        }
       }
-    } else {
-      console.log("⚠️ [Automatic Sync] Skipping WWR RSS Feed import because Gemini API Key is missing.");
+    } catch (err) {
+      console.error("❌ [Automatic Sync] WWR RSS sync failed:", err);
     }
   } catch (err) {
     console.error("❌ [Automatic Sync] General background job sync error:", err);
