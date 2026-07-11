@@ -288,6 +288,59 @@ function isJobMatchingNiche(title: string, description: string, industry: string
   return targetKeywords.some(keyword => clean.includes(keyword));
 }
 
+// Ensure the RSS item represents an actual job vacancy offer and not generic news/articles/tutorials
+function isActualJobOffer(title: string, description: string, isGoogleNews: boolean = false): boolean {
+  if (!isGoogleNews) {
+    // Standard job boards (Remotive, RemoteOk, Jobicy, WeWorkRemotely) are already 100% jobs
+    return true;
+  }
+
+  const combined = `${title} ${description}`.toLowerCase();
+  
+  // Normalize accents/diacritics
+  const clean = combined
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  
+  const cleanTitle = title.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // 1. Stricter negative news/article/tutorial indicators (commonly found in generic Google News feeds)
+  const negativeNewsKeywords = [
+    "como hacer", "como mejorar", "como crear", "como usar", "como ser", "como conseguir", "como trabajar",
+    "consejos para", "consejos de", "claves para", "trucos para", "guia de", "guia para",
+    "tendencias de", "tendencias en", "por que es", "que es un", "que es una", "que es el", "que es la",
+    "los mejores", "las mejores", "los 10", "los 5", "los 3", "los 7", "los 8", "cinco claves", "diez claves",
+    "el futuro de", "el impacto de", "el auge del", "el auge de", "crece un", "crecimiento de", "estudio revela", 
+    "informe sobre", "asi es", "de esta manera", "todo lo que necesitas saber", "guia completa", "guia definitiva", 
+    "consejos sobre", "claves del", "claves de la", "errores comunes", "errores al", "aprende a",
+    "aprende como", "guia practica", "los beneficios de", "las ventajas de", "por que deberias", "el exito de",
+    "la importancia de", "entrevista a", "entrevista con", "curso de", "master en", "formacion en", "noticias",
+    "noticia", "revoluciona", "las claves", "claves del", "el mercado de", "empleo crece", "trabajo crece",
+    "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los", "historia de", "todo sobre",
+    "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar"
+  ];
+
+  if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword))) {
+    return false;
+  }
+
+  // 2. Positive job vacancy indicators in title or body
+  const jobIndicators = [
+    "empleo", "vacante", "trabajo", "buscamos", "unete", "contrata", "hiring", "career",
+    "oferta", "puesto", "incorporacion", "jornada", "sueldo", "salario", "remunerado", "remunerada",
+    "contract", "salary", "full-time", "part-time", "remoto", "remota", "freelance",
+    "apply", "postula", "seleccion", "perfil", "requisitos", "experiencia", "cv", "curriculum",
+    "enviar", "inscribete", "inscribirse", "candidato", "candidata", "postulacion",
+    "responsabilidades", "funciones", "ofrecemos", "contratacion", "bolsa de trabajo", 
+    "se busca", "se solicita", "se precisa", "precisa incorporar", "urge", "contratamos"
+  ];
+
+  const hasJobKeyword = jobIndicators.some(indicator => clean.includes(indicator));
+  return hasJobKeyword;
+}
+
 // Fallback Helper to parse RSS XML manually without requiring Gemini API
 function parseRssXmlManually(xmlText: string, feedUrl: string = ''): any[] {
   const jobs: any[] = [];
@@ -667,6 +720,7 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
         parsedResult = { jobs: manualJobs };
       }
 
+      const isGoogleNewsFeed = urlToFetch.toLowerCase().includes("news.google.com");
       const importedJobs: Job[] = [];
       const currentJobs = db.getJobs();
 
@@ -680,6 +734,11 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
 
         // Ensure newly imported RSS jobs fit the strict 6-category target
         if (!isJobMatchingNiche(item.title, item.description, item.industry)) {
+          continue;
+        }
+
+        // Filter out informational news or tutorials (not real jobs) especially for Google News
+        if (!isActualJobOffer(item.title, item.description, isGoogleNewsFeed)) {
           continue;
         }
 
@@ -1170,6 +1229,11 @@ async function runAutomaticJobSync() {
               continue;
             }
 
+            // Filter out general news / blog articles (not actual job vacancies)
+            if (!isActualJobOffer(item.title, item.description, true)) {
+              continue;
+            }
+
             db.addJob({
               id: `rss-auto-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
               title: item.title,
@@ -1222,6 +1286,26 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     
+    // Database Cleanup: Remove any stale news articles or incompatible jobs that were previously imported
+    try {
+      const currentJobs = db.getJobs();
+      let prunedCount = 0;
+      for (const j of currentJobs) {
+        const isNiche = isJobMatchingNiche(j.title, j.description, j.industry);
+        const isGoogleNews = j.id.startsWith("rss-") || j.id.startsWith("scraped-") || j.id.startsWith("rss-auto-");
+        const isJob = isActualJobOffer(j.title, j.description, isGoogleNews);
+        if (!isNiche || !isJob) {
+          db.deleteJob(j.id);
+          prunedCount++;
+        }
+      }
+      if (prunedCount > 0) {
+        console.log(`🧹 [Startup Cleanup] Pruned ${prunedCount} non-job items / news articles from database.`);
+      }
+    } catch (cleanErr: any) {
+      console.error("⚠️ [Startup Cleanup] Failed to run database job pruning:", cleanErr.message || cleanErr);
+    }
+
     // Trigger automatic synchronization 5 seconds after startup
     setTimeout(() => {
       runAutomaticJobSync();
