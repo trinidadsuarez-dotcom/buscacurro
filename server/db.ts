@@ -32,7 +32,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Marketing Digital',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: true
+    isVerifiedCompany: true,
+    url: 'https://remotive.com'
   },
   {
     id: 'job-2',
@@ -46,7 +47,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Redacción Web',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: true
+    isVerifiedCompany: true,
+    url: 'https://weworkremotely.com'
   },
   {
     id: 'job-3',
@@ -60,7 +62,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Social Media Manager',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: true
+    isVerifiedCompany: true,
+    url: 'https://remoteok.com'
   },
   {
     id: 'job-4',
@@ -74,7 +77,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Community Manager',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: false
+    isVerifiedCompany: false,
+    url: 'https://news.google.com'
   },
   {
     id: 'job-5',
@@ -88,7 +92,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Producción Audiovisual',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: true
+    isVerifiedCompany: true,
+    url: 'https://remotive.com'
   },
   {
     id: 'job-6',
@@ -102,7 +107,8 @@ const DEFAULT_JOBS: Job[] = [
     industry: 'Producción de Animación',
     recruiterId: 'recruiter-admin',
     postedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-    isVerifiedCompany: true
+    isVerifiedCompany: true,
+    url: 'https://weworkremotely.com'
   }
 ];
 
@@ -331,6 +337,15 @@ async function initPostgresSchema() {
     `);
 
     console.log("🐘 [PostgreSQL] Schema matches successfully.");
+
+    // Guarantee default jobs have correct URLs in PostgreSQL
+    for (const defJob of DEFAULT_JOBS) {
+      await pool.query(`
+        UPDATE jobs SET url = $1 WHERE id = $2 AND url IS NULL
+      `, [defJob.url, defJob.id]).catch(err => {
+        console.warn("🐘 [PostgreSQL] Failed to backfill URL for default job:", defJob.id, err.message);
+      });
+    }
 
     // Always guarantee that the web-importer system user exists to prevent foreign key issues
     await pool.query(`

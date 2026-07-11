@@ -638,9 +638,27 @@ export default function App() {
                         <div className="space-y-3">
                           <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Descripción del puesto</h4>
                           <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-line bg-gray-50/50 p-4 rounded-xl border border-gray-50">
-                            {selectedJob.description}
+                            {selectedJob.description.split('**🔗 Enlace original de postulación:**')[0].trim()}
                           </p>
                         </div>
+
+                        {selectedJob.url && (
+                          <div className="rounded-xl border border-indigo-100 bg-indigo-50/20 p-4 flex items-center justify-between gap-4">
+                            <div className="space-y-0.5">
+                              <h4 className="text-xs font-bold text-indigo-950">Enlace Original</h4>
+                              <p className="text-[11px] text-indigo-700">Puedes consultar la oferta completa y postularte directamente en la fuente oficial.</p>
+                            </div>
+                            <a
+                              href={selectedJob.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                            >
+                              <span>Ver Oferta</span>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          </div>
+                        )}
 
                         {/* Action section (CV Adapt and Apply) */}
                         <div className="pt-3 border-t border-gray-50">

@@ -289,9 +289,9 @@ function isJobMatchingNiche(title: string, description: string, industry: string
 }
 
 // Ensure the RSS item represents an actual job vacancy offer and not generic news/articles/tutorials
-function isActualJobOffer(title: string, description: string, isGoogleNews: boolean = false): boolean {
-  if (!isGoogleNews) {
-    // Standard job boards (Remotive, RemoteOk, Jobicy, WeWorkRemotely) are already 100% jobs
+function isActualJobOffer(title: string, description: string, isExternalImport: boolean = true): boolean {
+  if (!isExternalImport) {
+    // Trusted manually created jobs
     return true;
   }
 
@@ -306,9 +306,10 @@ function isActualJobOffer(title: string, description: string, isGoogleNews: bool
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  // 1. Stricter negative news/article/tutorial indicators (commonly found in generic Google News feeds)
+  // 1. Thorough negative keywords in title to catch news, blog articles, tutorials, courses, and guides
   const negativeNewsKeywords = [
     "como hacer", "como mejorar", "como crear", "como usar", "como ser", "como conseguir", "como trabajar",
+    "como utilizar", "como optimizar", "como redactar", "como planificar", "como diseñar",
     "consejos para", "consejos de", "claves para", "trucos para", "guia de", "guia para",
     "tendencias de", "tendencias en", "por que es", "que es un", "que es una", "que es el", "que es la",
     "los mejores", "las mejores", "los 10", "los 5", "los 3", "los 7", "los 8", "cinco claves", "diez claves",
@@ -319,14 +320,19 @@ function isActualJobOffer(title: string, description: string, isGoogleNews: bool
     "la importancia de", "entrevista a", "entrevista con", "curso de", "master en", "formacion en", "noticias",
     "noticia", "revoluciona", "las claves", "claves del", "el mercado de", "empleo crece", "trabajo crece",
     "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los", "historia de", "todo sobre",
-    "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar"
+    "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar",
+    "herramientas para", "herramientas de", "el secreto", "mitos de", "mitos sobre", "paso a paso", "webinar",
+    "masterclass", "taller de", "seminario", "conferencia", "podcast", "novedades", "opinion sobre", "analisis de",
+    "analisis sobre", "reflexion sobre", "desafios de", "retos de", "digitalizacion de", "estrategias para",
+    "consejo", "truco", "error que", "los errores", "pasos para", "para mejorar", "para optimizar", "triunfar en",
+    "como ", "que es ", "que son ", "por que "
   ];
 
   if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword))) {
     return false;
   }
 
-  // 2. Positive job vacancy indicators in title or body
+  // 2. Positive job vacancy indicators (must contain at least one to be an active offer)
   const jobIndicators = [
     "empleo", "vacante", "trabajo", "buscamos", "unete", "contrata", "hiring", "career",
     "oferta", "puesto", "incorporacion", "jornada", "sueldo", "salario", "remunerado", "remunerada",
@@ -334,7 +340,10 @@ function isActualJobOffer(title: string, description: string, isGoogleNews: bool
     "apply", "postula", "seleccion", "perfil", "requisitos", "experiencia", "cv", "curriculum",
     "enviar", "inscribete", "inscribirse", "candidato", "candidata", "postulacion",
     "responsabilidades", "funciones", "ofrecemos", "contratacion", "bolsa de trabajo", 
-    "se busca", "se solicita", "se precisa", "precisa incorporar", "urge", "contratamos"
+    "se busca", "se solicita", "se precisa", "precisa incorporar", "urge", "contratamos",
+    "analista", "especialista", "creador", "redactor", "copywriter", "editor", "animador", "manager",
+    "director", "designer", "diseñador", "consultor", "tecnico", "experto", "profesional",
+    "social media", "community manager", "copywriting", "audiovisual", "seo", "sem"
   ];
 
   const hasJobKeyword = jobIndicators.some(indicator => clean.includes(indicator));
@@ -1299,8 +1308,8 @@ async function startServer() {
       let prunedCount = 0;
       for (const j of currentJobs) {
         const isNiche = isJobMatchingNiche(j.title, j.description, j.industry);
-        const isGoogleNews = j.id.startsWith("rss-") || j.id.startsWith("scraped-") || j.id.startsWith("rss-auto-");
-        const isJob = isActualJobOffer(j.title, j.description, isGoogleNews);
+        const isImported = j.recruiterId === "web-importer";
+        const isJob = isActualJobOffer(j.title, j.description, isImported);
         if (!isNiche || !isJob) {
           db.deleteJob(j.id);
           prunedCount++;
