@@ -503,7 +503,8 @@ function parseRssXmlManually(xmlText: string, feedUrl: string = ''): any[] {
       type,
       salaryMin,
       salaryMax,
-      industry
+      industry,
+      url: link
     });
   }
   return jobs;
@@ -614,7 +615,8 @@ app.post("/api/jobs/import-external", async (req, res) => {
           industry,
           recruiterId: "web-importer",
           postedAt: item.publication_date ? new Date(item.publication_date).toISOString() : new Date().toISOString(),
-          isVerifiedCompany: true
+          isVerifiedCompany: true,
+          url: item.url || undefined
         };
 
         db.addJob(newJob);
@@ -670,6 +672,7 @@ Esquema de salida:
 - salaryMin: Salario mínimo anual en EUR (número estimado de mercado o 0 si no se indica).
 - salaryMax: Salario máximo anual en EUR (número estimado de mercado o 0 si no se indica).
 - industry: Sector de la vacante ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+- url: Enlace o URL original del item RSS (del tag <link>).
 
 Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
 `;
@@ -694,7 +697,8 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
                         type: { type: Type.STRING },
                         salaryMin: { type: Type.INTEGER },
                         salaryMax: { type: Type.INTEGER },
-                        industry: { type: Type.STRING }
+                        industry: { type: Type.STRING },
+                        url: { type: Type.STRING }
                       },
                       required: ["title", "company", "description", "location", "type", "industry"]
                     }
@@ -754,7 +758,8 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
           industry: item.industry || "Tecnología",
           recruiterId: "web-importer",
           postedAt: new Date().toISOString(),
-          isVerifiedCompany: true
+          isVerifiedCompany: true,
+          url: item.url || undefined
         };
 
         db.addJob(newJob);
@@ -1183,7 +1188,8 @@ async function runAutomaticJobSync() {
             industry,
             recruiterId: "web-importer",
             postedAt: item.publication_date ? new Date(item.publication_date).toISOString() : new Date().toISOString(),
-            isVerifiedCompany: true
+            isVerifiedCompany: true,
+            url: item.url || undefined
           });
           count++;
         }
@@ -1246,7 +1252,8 @@ async function runAutomaticJobSync() {
               industry: item.industry || "Marketing Digital",
               recruiterId: "web-importer",
               postedAt: new Date().toISOString(),
-              isVerifiedCompany: true
+              isVerifiedCompany: true,
+              url: item.url || undefined
             });
             count++;
           }

@@ -29,6 +29,7 @@ export interface Job {
   recruiterId: string;
   postedAt: string;
   isVerifiedCompany: boolean;
+  url?: string;
 }
 
 export type ApplicationStatus = 'Applied' | 'Screening' | 'Interview' | 'Offered' | 'Rejected';

@@ -293,9 +293,17 @@ async function initPostgresSchema() {
         industry VARCHAR(255),
         recruiter_id VARCHAR(255),
         posted_at VARCHAR(255),
-        is_verified_company BOOLEAN DEFAULT FALSE
+        is_verified_company BOOLEAN DEFAULT FALSE,
+        url VARCHAR(2048)
       );
     `);
+
+    // Ensure url column exists in jobs table
+    await pool.query(`
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS url VARCHAR(2048);
+    `).catch(err => {
+      console.warn("🐘 [PostgreSQL] Optional alter table jobs failed (column might already exist):", err.message);
+    });
 
     // Create applications
     await pool.query(`
@@ -379,7 +387,8 @@ async function initPostgresSchema() {
         industry: j.industry,
         recruiterId: j.recruiter_id,
         postedAt: j.posted_at,
-        isVerifiedCompany: !!j.is_verified_company
+        isVerifiedCompany: !!j.is_verified_company,
+        url: j.url || undefined
       }));
 
       const mappedApps: Application[] = appsRes.rows.map((a: any) => ({
@@ -420,10 +429,10 @@ async function initPostgresSchema() {
 
       for (const j of dbState.data.jobs) {
         await pool.query(`
-          INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           ON CONFLICT (id) DO NOTHING
-        `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false]);
+        `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null]);
       }
 
       for (const a of dbState.data.applications) {
@@ -509,10 +518,10 @@ export const db = {
 
     // PG Sync
     pgWrite(`
-      INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       ON CONFLICT (id) DO NOTHING
-    `, [job.id, job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false]);
+    `, [job.id, job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null]);
 
     return job;
   },
@@ -526,9 +535,9 @@ export const db = {
     const job = dbState.data.jobs[idx];
     pgWrite(`
       UPDATE jobs
-      SET title = $1, company = $2, description = $3, location = $4, type = $5, salary_min = $6, salary_max = $7, industry = $8, recruiter_id = $9, posted_at = $10, is_verified_company = $11
-      WHERE id = $12
-    `, [job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, id]);
+      SET title = $1, company = $2, description = $3, location = $4, type = $5, salary_min = $6, salary_max = $7, industry = $8, recruiter_id = $9, posted_at = $10, is_verified_company = $11, url = $12
+      WHERE id = $13
+    `, [job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null, id]);
 
     return dbState.data.jobs[idx];
   },

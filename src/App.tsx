@@ -30,7 +30,8 @@ import {
   ShieldCheck,
   User as UserIcon,
   Unlock,
-  Building
+  Building,
+  ExternalLink
 } from 'lucide-react';
 
 export default function App() {
@@ -601,7 +602,22 @@ export default function App() {
                               </span>
                             )}
                           </div>
-                          <h2 className="font-display text-lg font-bold text-gray-900 leading-snug">{selectedJob.title}</h2>
+                          <h2 className="font-display text-lg font-bold text-gray-900 leading-snug">
+                            {selectedJob.url ? (
+                              <a 
+                                href={selectedJob.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1.5 hover:text-indigo-600 hover:underline transition-colors"
+                                title="Ver publicación original (abre en nueva pestaña)"
+                              >
+                                <span>{selectedJob.title}</span>
+                                <ExternalLink className="h-4 w-4 text-indigo-500 shrink-0 inline" />
+                              </a>
+                            ) : (
+                              <span>{selectedJob.title}</span>
+                            )}
+                          </h2>
                           
                           <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
