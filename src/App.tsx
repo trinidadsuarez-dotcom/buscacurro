@@ -519,10 +519,10 @@ export default function App() {
 
               {/* VIEW: JOB SEARCH & DETAILS PANEL */}
               {candidateTab === 'jobs' && (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   
                   {/* Left Column: Filters */}
-                  <div className="lg:col-span-1 space-y-4">
+                  <div className="lg:col-span-3 space-y-4">
                     <JobFilters
                       location={searchLocation}
                       onChangeLocation={setSearchLocation}
@@ -557,7 +557,7 @@ export default function App() {
                   </div>
 
                   {/* Middle Column: Jobs Listing Feed */}
-                  <div className="lg:col-span-1.5 space-y-4">
+                  <div className="lg:col-span-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-display text-sm font-bold text-gray-900">Ofertas disponibles ({jobs.length})</h3>
                       <span className="text-xs text-gray-400 font-mono">Búsqueda rápida</span>
@@ -586,7 +586,7 @@ export default function App() {
                   </div>
 
                   {/* Right Column: Active Job Details Panel */}
-                  <div className="lg:col-span-1.5">
+                  <div className="lg:col-span-5">
                     {selectedJob ? (
                       <div className="sticky top-24 rounded-xl border border-gray-100 bg-white p-6 shadow-sm space-y-5">
                         

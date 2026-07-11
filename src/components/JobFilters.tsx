@@ -17,7 +17,15 @@ interface JobFiltersProps {
   onChangeSalaryMin: (val: number) => void;
 }
 
-const INDUSTRIES = ['Todas', 'Tecnología', 'Marketing', 'Finanzas', 'Diseño', 'Soporte', 'Ventas'];
+const INDUSTRIES = [
+  'Todas', 
+  'Marketing Digital', 
+  'Redacción Web', 
+  'Social Media Manager', 
+  'Community Manager', 
+  'Producción Audiovisual', 
+  'Producción de Animación'
+];
 
 export const JobFilters: React.FC<JobFiltersProps> = ({
   location,

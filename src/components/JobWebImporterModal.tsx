@@ -30,10 +30,11 @@ interface JobWebImporterModalProps {
 
 const PRESET_FEEDS = [
   { name: 'Google News (Marketing Digital)', url: 'https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Marketing Online)', url: 'https://news.google.com/rss/search?q=marketing+online+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google Search Jobs (Marketing Digital)', url: 'https://www.google.com/search?q=marketing+digital&udm=8' },
-  { name: 'We Work Remotely (Programación)', url: 'https://weworkremotely.com/categories/remote-programming-jobs.rss' },
-  { name: 'RemoteOK (Todas)', url: 'https://remoteok.com/remote-jobs.rss' }
+  { name: 'Google News (Redacción Web / Copywriting)', url: 'https://news.google.com/rss/search?q=redaccion+web+OR+copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google News (Social Media Manager)', url: 'https://news.google.com/rss/search?q=social+media+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google News (Community Manager)', url: 'https://news.google.com/rss/search?q=community+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google News (Producción Audiovisual)', url: 'https://news.google.com/rss/search?q=produccion+audiovisual+OR+editor+video+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
+  { name: 'Google News (Producción de Animación)', url: 'https://news.google.com/rss/search?q=animacion+OR+animador+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' }
 ];
 
 export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({

@@ -129,6 +129,9 @@ app.get("/api/jobs", (req, res) => {
   const { industry, location, type, salaryMin } = req.query;
   let jobs = db.getJobs();
 
+  // Enforce the strict niche filter so the user only sees relevant jobs
+  jobs = jobs.filter(j => isJobMatchingNiche(j.title, j.description, j.industry));
+
   if (industry && industry !== 'Todas') {
     jobs = jobs.filter(j => j.industry === industry);
   }
@@ -245,6 +248,44 @@ function preprocessUrl(url: string): string {
   } catch (err) {
     return url;
   }
+}
+
+// Check if a job posting matches the strict allowed categories:
+// Marketing Digital, Redacción Web, Social Media Manager, Community Manager, Producción Audiovisual, Producción de Animación
+function isJobMatchingNiche(title: string, description: string, industry: string): boolean {
+  const combined = `${title} ${description} ${industry}`.toLowerCase();
+  
+  // Normalize accents/diacritics
+  const clean = combined
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const targetKeywords = [
+    "marketing digital",
+    "marketing online",
+    "redaccion web",
+    "redaccion",
+    "redactor",
+    "copywriter",
+    "copywriting",
+    "redaccion de contenidos",
+    "social media manager",
+    "social media",
+    "community manager",
+    "produccion audiovisual",
+    "audiovisual",
+    "editor de video",
+    "edicion de video",
+    "produccion de animacion",
+    "animacion",
+    "animador",
+    "motion graphics",
+    "creador de contenido",
+    "seo",
+    "sem"
+  ];
+
+  return targetKeywords.some(keyword => clean.includes(keyword));
 }
 
 // Fallback Helper to parse RSS XML manually without requiring Gemini API
@@ -503,6 +544,11 @@ app.post("/api/jobs/import-external", async (req, res) => {
         const cleanDesc = cleanHtml(item.description);
         const excerptDesc = cleanDesc.length > 700 ? cleanDesc.slice(0, 700) + "...\n\n*(Oferta importada de Remotive API)*" : cleanDesc;
 
+        // Ensure newly imported API jobs fit the strict 6-category target
+        if (!isJobMatchingNiche(item.title, excerptDesc, industry)) {
+          continue;
+        }
+
         const newJob: Job = {
           id: uniqueId,
           title: item.title,
@@ -632,6 +678,11 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
         );
         if (isDupe) continue;
 
+        // Ensure newly imported RSS jobs fit the strict 6-category target
+        if (!isJobMatchingNiche(item.title, item.description, item.industry)) {
+          continue;
+        }
+
         const newJob: Job = {
           id: `rss-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
           title: item.title,
@@ -749,6 +800,13 @@ Devuelve únicamente el objeto JSON con estos campos.
       const parsedJob = JSON.parse(response.text || "{}");
       if (!parsedJob.title || !parsedJob.company) {
         throw new Error("No se pudo detectar un título de puesto o una empresa válidos en el texto de la página.");
+      }
+
+      // Check niche match
+      if (!isJobMatchingNiche(parsedJob.title, parsedJob.description, parsedJob.industry || "")) {
+        return res.status(400).json({ 
+          error: "La oferta escaneada no pertenece a los sectores autorizados (Marketing Digital, Redacción Web, Social Media, Community Manager, Producción Audiovisual o Animación)." 
+        });
       }
 
       const newJob: Job = {
@@ -1007,9 +1065,9 @@ async function runAutomaticJobSync() {
   console.log("⏰ [Automatic Sync] Starting scheduled automatic job import...");
   let totalImported = 0;
 
-  // 1. Fetch from Remotive API for "react"
+  // 1. Fetch from Remotive API for "marketing" (matching our digital niches)
   try {
-    const apiUrl = "https://remotive.com/api/remote-jobs?search=react";
+    const apiUrl = "https://remotive.com/api/remote-jobs?search=marketing";
     console.log(`⏰ [Automatic Sync] Fetching Remotive API: ${apiUrl}`);
     const fetchRes = await fetchWithTimeout(apiUrl, 8000);
     if (fetchRes.ok) {
@@ -1036,18 +1094,23 @@ async function runAutomaticJobSync() {
             }
           }
 
-          let industry = "Tecnología";
+          let industry = "Marketing Digital";
           const cat = (item.category || "").toLowerCase();
           if (cat.includes("design") || cat.includes("creative") || cat.includes("ux")) {
             industry = "Diseño";
           } else if (cat.includes("marketing") || cat.includes("sales") || cat.includes("seo")) {
-            industry = "Marketing";
+            industry = "Marketing Digital";
           } else if (cat.includes("finance") || cat.includes("legal") || cat.includes("business")) {
-            industry = "Finanzas";
+            industry = "Otros";
           }
 
           const cleanDesc = cleanHtml(item.description);
           const excerptDesc = cleanDesc.length > 700 ? cleanDesc.slice(0, 700) + "...\n\n*(Oferta importada automáticamente de Remotive)*" : cleanDesc;
+
+          // Apply strict niche check
+          if (!isJobMatchingNiche(item.title, excerptDesc, industry)) {
+            continue;
+          }
 
           db.addJob({
             id: uniqueId,
@@ -1073,19 +1136,14 @@ async function runAutomaticJobSync() {
     console.error("❌ [Automatic Sync] Remotive API fetch failed:", err);
   }
 
-  // 2. Fetch from the 11 RSS feeds (fully manual, no Gemini API to avoid rate limits/quota)
+  // 2. Fetch from the specific Google News RSS feeds for our exact target niches (fully manual to avoid rate limits)
   const feedsToSync = [
     { name: "Google News - Marketing Digital", url: "https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Marketing Online", url: "https://news.google.com/rss/search?q=marketing+online+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - SEO", url: "https://news.google.com/rss/search?q=seo+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Social Media", url: "https://news.google.com/rss/search?q=social+media+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Copywriter", url: "https://news.google.com/rss/search?q=copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Jobicy - Marketing", url: "https://jobicy.com/?feed=job_feed&job_categories=marketing" },
-    { name: "Jobicy - SEO", url: "https://jobicy.com/?feed=job_feed&job_categories=seo" },
-    { name: "Jobicy - Copywriting", url: "https://jobicy.com/?feed=job_feed&job_categories=copywriting" },
-    { name: "RemoteOK - Marketing", url: "https://remoteok.com/remote-marketing-jobs.rss" },
-    { name: "RemoteOK - Writing", url: "https://remoteok.com/remote-writing-jobs.rss" },
-    { name: "We Work Remotely - All Remote", url: "https://weworkremotely.com/remote-jobs.rss" }
+    { name: "Google News - Redacción Web", url: "https://news.google.com/rss/search?q=redaccion+web+OR+copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
+    { name: "Google News - Social Media Manager", url: "https://news.google.com/rss/search?q=social+media+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
+    { name: "Google News - Community Manager", url: "https://news.google.com/rss/search?q=community+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
+    { name: "Google News - Producción Audiovisual", url: "https://news.google.com/rss/search?q=produccion+audiovisual+OR+editor+video+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
+    { name: "Google News - Producción de Animación", url: "https://news.google.com/rss/search?q=animacion+OR+animador+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" }
   ];
 
   for (const feed of feedsToSync) {
@@ -1107,6 +1165,11 @@ async function runAutomaticJobSync() {
             );
             if (isDupe) continue;
 
+            // Apply strict niche check
+            if (!isJobMatchingNiche(item.title, item.description, item.industry || "Otros")) {
+              continue;
+            }
+
             db.addJob({
               id: `rss-auto-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
               title: item.title,
@@ -1116,7 +1179,7 @@ async function runAutomaticJobSync() {
               type: item.type || "remote",
               salaryMin: item.salaryMin || 30000,
               salaryMax: item.salaryMax || 45000,
-              industry: item.industry || "Tecnología",
+              industry: item.industry || "Marketing Digital",
               recruiterId: "web-importer",
               postedAt: new Date().toISOString(),
               isVerifiedCompany: true
