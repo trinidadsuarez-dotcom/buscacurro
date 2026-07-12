@@ -29,12 +29,12 @@ interface JobWebImporterModalProps {
 }
 
 const PRESET_FEEDS = [
-  { name: 'Google News (Marketing Digital)', url: 'https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Redacción Web / Copywriting)', url: 'https://news.google.com/rss/search?q=redaccion+web+OR+copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Social Media Manager)', url: 'https://news.google.com/rss/search?q=social+media+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Community Manager)', url: 'https://news.google.com/rss/search?q=community+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Producción Audiovisual)', url: 'https://news.google.com/rss/search?q=produccion+audiovisual+OR+editor+video+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' },
-  { name: 'Google News (Producción de Animación)', url: 'https://news.google.com/rss/search?q=animacion+OR+animador+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es' }
+  { name: 'WeWorkRemotely - Marketing', url: 'https://weworkremotely.com/categories/remote-marketing-jobs.rss' },
+  { name: 'WeWorkRemotely - Copywriting & Content', url: 'https://weworkremotely.com/categories/remote-copywriting-jobs.rss' },
+  { name: 'WeWorkRemotely - Design & Creative', url: 'https://weworkremotely.com/categories/remote-design-jobs.rss' },
+  { name: 'Jobicy - Marketing', url: 'https://jobicy.com/feed/marketing' },
+  { name: 'Jobicy - Writing', url: 'https://jobicy.com/feed/writing' },
+  { name: 'Jobicy - Design & Creative', url: 'https://jobicy.com/feed/design' }
 ];
 
 export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
@@ -51,7 +51,7 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
 
   // Tab State Values
   const [apiQuery, setApiQuery] = useState('react');
-  const [rssUrl, setRssUrl] = useState('https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es');
+  const [rssUrl, setRssUrl] = useState('https://weworkremotely.com/categories/remote-marketing-jobs.rss');
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [rawContent, setRawContent] = useState('');
   const [showRawContentInput, setShowRawContentInput] = useState(false);

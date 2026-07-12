@@ -289,9 +289,9 @@ function isJobMatchingNiche(title: string, description: string, industry: string
 }
 
 // Ensure the RSS item represents an actual job vacancy offer and not generic news/articles/tutorials/events
-function isActualJobOffer(title: string, description: string, isExternalImport: boolean = true): boolean {
-  if (!isExternalImport) {
-    // Trusted manually created jobs
+function isActualJobOffer(title: string, description: string, isExternalImport: boolean = true, isTrustedJobBoard: boolean = false): boolean {
+  if (!isExternalImport || isTrustedJobBoard) {
+    // Trusted manually created jobs or verified direct job board feeds (e.g. WeWorkRemotely, Jobicy, Remotive)
     return true;
   }
 
@@ -746,7 +746,7 @@ app.post("/api/jobs/import-external", async (req, res) => {
         }
 
         // Filter out informational news or non-Spanish / non-Spain vacancies
-        if (!isActualJobOffer(item.title, excerptDesc, true)) {
+        if (!isActualJobOffer(item.title, excerptDesc, true, true)) {
           continue;
         }
 
@@ -888,8 +888,13 @@ Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objet
           continue;
         }
 
+        const isTrusted = urlToFetch.toLowerCase().includes("weworkremotely.com") || 
+                          urlToFetch.toLowerCase().includes("jobicy.com") || 
+                          urlToFetch.toLowerCase().includes("remoteok.io") || 
+                          urlToFetch.toLowerCase().includes("remoteok.com");
+
         // Filter out informational news or tutorials (not real jobs) especially for Google News
-        if (!isActualJobOffer(item.title, item.description, isGoogleNewsFeed)) {
+        if (!isActualJobOffer(item.title, item.description, isGoogleNewsFeed, isTrusted)) {
           continue;
         }
 
@@ -1324,7 +1329,7 @@ async function runAutomaticJobSync() {
           }
 
           // Filter out informational news or non-Spanish / non-Spain vacancies
-          if (!isActualJobOffer(item.title, excerptDesc, true)) {
+          if (!isActualJobOffer(item.title, excerptDesc, true, true)) {
             continue;
           }
 
@@ -1353,14 +1358,14 @@ async function runAutomaticJobSync() {
     console.error("❌ [Automatic Sync] Remotive API fetch failed:", err);
   }
 
-  // 2. Fetch from the specific Google News RSS feeds for our exact target niches (fully manual to avoid rate limits)
+  // 2. Fetch from specific high-quality remote job RSS feeds for our exact target niches (fully manual to avoid rate limits)
   const feedsToSync = [
-    { name: "Google News - Marketing Digital", url: "https://news.google.com/rss/search?q=marketing+digital+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Redacción Web", url: "https://news.google.com/rss/search?q=redaccion+web+OR+copywriter+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Social Media Manager", url: "https://news.google.com/rss/search?q=social+media+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Community Manager", url: "https://news.google.com/rss/search?q=community+manager+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Producción Audiovisual", url: "https://news.google.com/rss/search?q=produccion+audiovisual+OR+editor+video+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" },
-    { name: "Google News - Producción de Animación", url: "https://news.google.com/rss/search?q=animacion+OR+animador+empleo+OR+vacante+OR+trabajo&hl=es&gl=ES&ceid=ES:es" }
+    { name: "WeWorkRemotely - Marketing", url: "https://weworkremotely.com/categories/remote-marketing-jobs.rss" },
+    { name: "WeWorkRemotely - Copywriting & Content", url: "https://weworkremotely.com/categories/remote-copywriting-jobs.rss" },
+    { name: "WeWorkRemotely - Design & Creative", url: "https://weworkremotely.com/categories/remote-design-jobs.rss" },
+    { name: "Jobicy - Marketing", url: "https://jobicy.com/feed/marketing" },
+    { name: "Jobicy - Writing", url: "https://jobicy.com/feed/writing" },
+    { name: "Jobicy - Design", url: "https://jobicy.com/feed/design" }
   ];
 
   for (const feed of feedsToSync) {
@@ -1387,8 +1392,13 @@ async function runAutomaticJobSync() {
               continue;
             }
 
+            const isTrusted = feed.url.toLowerCase().includes("weworkremotely.com") || 
+                              feed.url.toLowerCase().includes("jobicy.com") || 
+                              feed.url.toLowerCase().includes("remoteok.io") || 
+                              feed.url.toLowerCase().includes("remoteok.com");
+
             // Filter out general news / blog articles (not actual job vacancies)
-            if (!isActualJobOffer(item.title, item.description, true)) {
+            if (!isActualJobOffer(item.title, item.description, true, isTrusted)) {
               continue;
             }
 
@@ -1453,7 +1463,10 @@ async function startServer() {
         for (const j of currentJobs) {
           const isNiche = isJobMatchingNiche(j.title, j.description, j.industry);
           const isImported = j.recruiterId === "web-importer";
-          const isJob = isActualJobOffer(j.title, j.description, isImported);
+          const isTrusted = j.id.startsWith("remotive-") || 
+                            j.id.startsWith("rss-auto-") || 
+                            (j.url && (j.url.includes("weworkremotely.com") || j.url.includes("jobicy.com") || j.url.includes("remoteok.io") || j.url.includes("remoteok.com") || j.url.includes("remotive.com")));
+          const isJob = isActualJobOffer(j.title, j.description, isImported, !!isTrusted);
           if (!isNiche || !isJob) {
             db.deleteJob(j.id);
             prunedCount++;
