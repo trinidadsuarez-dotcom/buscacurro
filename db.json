@@ -1,0 +1,157 @@
+{
+  "users": [
+    {
+      "id": "web-importer",
+      "name": "TrabajoLocal Importer",
+      "email": "importer@trabajolocal.com",
+      "role": "recruiter",
+      "isVerified": true,
+      "verifiedAt": "2026-07-12T08:05:44.484Z",
+      "location": "Global",
+      "industry": "Tecnología"
+    },
+    {
+      "id": "candidate-demo",
+      "name": "Trinidad Suárez",
+      "email": "trinidadsuarez@gmail.com",
+      "role": "candidate",
+      "isVerified": true,
+      "verifiedAt": "2026-07-12T08:05:44.484Z",
+      "location": "Madrid, España",
+      "industry": "Tecnología",
+      "cvName": "Trinidad_Suarez_CV.pdf",
+      "cvText": "TRINIDAD SUÁREZ\nE-mail: trinidadsuarez@gmail.com | Ubicación: Madrid, España\nDESARROLLADOR WEB JUNIOR\n\nPERFIL PROFESIONAL\nDesarrolladora Web entusiasta con conocimientos sólidos en React, JavaScript y desarrollo de aplicaciones web responsivas. Proactiva, orientada al detalle y apasionada por resolver problemas lógicos y estéticos. Busco un puesto donde pueda contribuir a crear experiencias de usuario impecables.\n\nHABILIDADES TÉCNICAS\n- Frontend: HTML5, CSS3, JavaScript (ES6+), React, Tailwind CSS\n- Herramientas y Metodologías: Git, GitHub, Visual Studio Code, Scrum\n- Idiomas: Español (Nativo), Inglés (Intermedio - B2)\n\nEDUCACIÓN Y FORMACIÓN\n- Boot Camp de Desarrollo Web Full Stack (React/Node) | 2025\n- Grado de Formación Profesional en Desarrollo de Aplicaciones Web | 2024"
+    },
+    {
+      "id": "recruiter-admin",
+      "name": "Carlos Reclutador",
+      "email": "carlos.talent@innodigital.es",
+      "role": "recruiter",
+      "isVerified": true,
+      "verifiedAt": "2026-07-12T08:05:44.484Z",
+      "location": "Madrid, España",
+      "industry": "Tecnología"
+    }
+  ],
+  "jobs": [
+    {
+      "id": "job-1",
+      "title": "Especialista en Marketing Digital SEO/SEM",
+      "company": "EcoStyle Moda & Estilo",
+      "description": "Únete a nuestro equipo creativo para liderar campañas de SEO/SEM, estrategias integrales de marketing digital, optimización de motores de búsqueda y automatización de marketing. Experiencia en Google Analytics, Search Console y herramientas analíticas.",
+      "location": "Madrid, España",
+      "type": "local",
+      "salaryMin": 32000,
+      "salaryMax": 45000,
+      "industry": "Marketing Digital",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-11T08:05:44.483Z",
+      "isVerifiedCompany": true,
+      "url": "https://remotive.com"
+    },
+    {
+      "id": "job-2",
+      "title": "Redactor Web & Copywriter Creativo",
+      "company": "Words Matter Agency",
+      "description": "Buscamos un Redactor Web y Copywriter apasionado por la creación de artículos SEO, copys creativos para campañas digitales, guiones interactivos y optimización de contenido web. Imprescindible excelente redacción en español y nociones de SEO on-page.",
+      "location": "Barcelona, España",
+      "type": "local",
+      "salaryMin": 24000,
+      "salaryMax": 30000,
+      "industry": "Redacción Web",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-10T08:05:44.483Z",
+      "isVerifiedCompany": true,
+      "url": "https://weworkremotely.com"
+    },
+    {
+      "id": "job-3",
+      "title": "Social Media Manager & Estratega Digital",
+      "company": "TrendWave Media Group",
+      "description": "Buscamos un Social Media Manager experimentado para liderar el calendario editorial de marcas reconocidas, planificar estrategias de contenido orgánico y de pago en Instagram, TikTok y LinkedIn, y analizar métricas clave de engagement.",
+      "location": "Remoto",
+      "type": "remote",
+      "salaryMin": 30000,
+      "salaryMax": 42000,
+      "industry": "Social Media Manager",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-09T08:05:44.483Z",
+      "isVerifiedCompany": true,
+      "url": "https://remoteok.com"
+    },
+    {
+      "id": "job-4",
+      "title": "Community Manager de Marca & Atención al Cliente",
+      "company": "Foodies Group España",
+      "description": "Se busca Community Manager dinámico para interactuar con nuestra comunidad online, moderar comentarios, generar contenido diario en Stories/Reels, resolver dudas de clientes y dinamizar la presencia digital de nuestras cadenas de restauración.",
+      "location": "Sevilla, España",
+      "type": "local",
+      "salaryMin": 21000,
+      "salaryMax": 26000,
+      "industry": "Community Manager",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-08T08:05:44.483Z",
+      "isVerifiedCompany": false,
+      "url": "https://news.google.com"
+    },
+    {
+      "id": "job-5",
+      "title": "Productor Audiovisual & Editor de Video Senior",
+      "company": "PixelFrame Studios",
+      "description": "Buscamos un profesional de la producción audiovisual con alto dominio en edición de video (Premiere, After Effects o DaVinci), postproducción de sonido y diseño de sonido. Trabajarás creando spots comerciales, videos corporativos y contenido de alto impacto.",
+      "location": "Málaga, España",
+      "type": "local",
+      "salaryMin": 28000,
+      "salaryMax": 38000,
+      "industry": "Producción Audiovisual",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-07T08:05:44.483Z",
+      "isVerifiedCompany": true,
+      "url": "https://remotive.com"
+    },
+    {
+      "id": "job-6",
+      "title": "Animador 2D/3D & Especialista en Producción de Animación",
+      "company": "DreamArc Animation S.L.",
+      "description": "Buscamos un animador digital talentoso para unirse a nuestros proyectos cinematográficos y publicitarios de producción de animación. Requerido dominio de Blender, Maya o Toon Boom, y excelente entendimiento de los principios clásicos de animación.",
+      "location": "Remoto",
+      "type": "remote",
+      "salaryMin": 34000,
+      "salaryMax": 48000,
+      "industry": "Producción de Animación",
+      "recruiterId": "recruiter-admin",
+      "postedAt": "2026-07-06T08:05:44.484Z",
+      "isVerifiedCompany": true,
+      "url": "https://weworkremotely.com"
+    }
+  ],
+  "applications": [
+    {
+      "id": "app-demo-1",
+      "jobId": "job-1",
+      "candidateId": "candidate-demo",
+      "status": "Applied",
+      "appliedAt": "2026-07-11T08:05:44.484Z",
+      "resumeTailored": "CV adaptado para Desarrollador React Senior",
+      "coverLetterTailored": "Carta de presentación personalizada"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif-1",
+      "userId": "candidate-demo",
+      "message": "Bienvenido a TrabajoLocal. Tu perfil ha sido verificado con éxito.",
+      "type": "success",
+      "read": false,
+      "createdAt": "2026-07-09T08:05:44.484Z"
+    },
+    {
+      "id": "notif-2",
+      "userId": "candidate-demo",
+      "message": "Has postulado con éxito al puesto \"Desarrollador React Senior\" en \"Innovación Digital S.L.\".",
+      "type": "info",
+      "read": false,
+      "createdAt": "2026-07-11T08:05:44.484Z"
+    }
+  ]
+}

@@ -288,7 +288,7 @@ function isJobMatchingNiche(title: string, description: string, industry: string
   return targetKeywords.some(keyword => clean.includes(keyword));
 }
 
-// Ensure the RSS item represents an actual job vacancy offer and not generic news/articles/tutorials
+// Ensure the RSS item represents an actual job vacancy offer and not generic news/articles/tutorials/events
 function isActualJobOffer(title: string, description: string, isExternalImport: boolean = true): boolean {
   if (!isExternalImport) {
     // Trusted manually created jobs
@@ -307,7 +307,6 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     .replace(/[\u0300-\u036f]/g, "");
 
   // 1. Check Spanish language requirement:
-  // Must contain some common Spanish words to ensure it's written in Spanish
   const spanishStopwords = [" de ", " la ", " el ", " en ", " para ", " que ", " con ", " los ", " las ", " por ", " del ", " una ", " como "];
   let spanishWordMatches = 0;
   for (const word of spanishStopwords) {
@@ -323,7 +322,6 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
   }
 
   // 2. Spain Focus & Anti-Latin-America requirement:
-  // Exclude jobs mentioning Latin American countries, cities, or currencies
   const latinAmericaKeywords = [
     "mexico", "colombia", "argentina", "chile", "peru", "ecuador", "venezuela", "uruguay", "paraguay", 
     "bolivia", "guatemala", "costa rica", "republica dominicana", "panama", "honduras", "salvador", "nicaragua",
@@ -334,44 +332,113 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     return false;
   }
 
-  // 3. Thorough negative keywords in title to catch news, blog articles, tutorials, courses, and guides
+  // 3. Regular Expression checks for typical News Headings (e.g. "Las 10 mejores...", "5 claves...")
+  const listRegex = /(los|las|\b\d+)\s+(\d+\s+)?(mejores|claves|trucos|consejos|errores|herramientas|agencias|pasos|beneficios|ventajas|razones|recursos|tendencias|mitos)\b/i;
+  if (listRegex.test(cleanTitle)) {
+    return false;
+  }
+
+  // 4. Commemorative / Informational / Trend Days Exclusions
+  const commemorativeKeywords = [
+    "dia del", "dia mundial", "dia internacional", "dia de la", "dia de los", "celebra", "celebracion", "efemerides"
+  ];
+  if (commemorativeKeywords.some(kw => cleanTitle.includes(kw))) {
+    return false;
+  }
+
+  // 5. Educational / Academic syllabus / Lecture Exclusions
+  const educationalKeywords = [
+    "clase n", "clase numero", "catedra", "grado en", "master en", "curso de", "cursos de", "taller de", "talleres de",
+    "formacion en", "facultad de", "universidad de", "colegio de", "instituto de", "temario", "introduccion al", "introduccion a la",
+    "fundamentos de", "aprende a", "aprender a", "becas de", "becas para"
+  ];
+  if (educationalKeywords.some(kw => cleanTitle.includes(kw) || clean.includes(kw))) {
+    return false;
+  }
+
+  // 6. Public Sector / Civil Servant Exams Exclusions (Not active private sector vacancies)
+  const publicSectorKeywords = [
+    "proceso selectivo", "lista de reserva", "lista reserva", "oposicion", "oposiciones", "concurso oposicion",
+    "ayuntamiento", "diputacion", "cabildo", "generalitat", "junta de", "boletin oficial", "boe", "bop", "dogc",
+    "bopa", "boc", "boja", "convocatoria", "convocatorias", "plazas de", "empleo publico", "funcionarios", "funcionario",
+    "subvencion", "subvenciones", "tecnico superior", "tecnico medio", "tecnico especialista", "tecnico/a superior",
+    "tecnico/a medio", "concurso de meritos", "meritos", "concurso-oposicion", "concurso oposicion", "consorcio",
+    "cccb", "centre de cultura", "patronato"
+  ];
+  if (publicSectorKeywords.some(kw => cleanTitle.includes(kw) || clean.includes(kw))) {
+    return false;
+  }
+
+  // 7. Journalism Headline Verb & Story Exclusions
+  const storyVerbs = [
+    "se despide", "fallece", "muere", "muerte de", "obituario", "se pronuncia", "se va de", "carga contra", "critica",
+    "abandona", "apuesta por", "apuestan por", "aposto por", "crea su", "crean su", "creo su", "crearon su", "abre su", "abren su", "abrio su", "se asocia", "alianza",
+    "inversion", "invierte", "adquiere", "compra", "vende", "inaugura", "inauguran", "acoge", "acogen", "refuerza", "refuerzan",
+    "lidera", "lideran", "revela", "sube", "baja", "cae", "entrevista a", "entrevista con", "conversamos con", "hablamos con",
+    "retrato de", "historia de", "historia del", "perfil de", "conoce a", "conoce el", "conoce la", "conoce los", "el futuro de",
+    "el impacto de", "el auge de", "el auge del", "digitalizacion de", "digitalizacion en", "analisis sobre", "analisis de",
+    "opinion sobre", "opinion de", "reflexion sobre", "equipa", "equipan", "lanzo", "lanzaron", "compro", "vendio", "fallecio",
+    "murio", "despidio", "incorporo", "retira", "se retira", "jubila", "se jubila"
+  ];
+  if (storyVerbs.some(verb => cleanTitle.includes(verb) || clean.includes(verb))) {
+    return false;
+  }
+
+  // 8. General News Reporting Verbs / Headline Indicators
+  const newsVerbs = [
+    "busca", "buscan", "buscamos", "contrata", "contratan", "contratamos", "anuncia", "anuncian", 
+    "ofrece", "ofrecen", "ofrecemos", "presenta", "presentan", "lanza", "lanzan", "necesita", "necesitan", 
+    "precisa", "precisan", "solicita", "solicitan", "se busca", "se buscan", "se contrata", "se contratan", 
+    "se necesita", "se necesitan", "se ofrece", "se ofrecen", "se solicita", "se solicitan"
+  ];
+  
+  if (cleanTitle.includes(":") && !cleanTitle.startsWith("trabajo") && !cleanTitle.startsWith("oferta")) {
+    return false;
+  }
+
+  // If title has a verb like "busca" or "contrata" preceded by proper nouns (like "Google", "MGS Seguros", "Ayuntamiento", etc.), it's a news report.
+  for (const verb of ["busca", "buscan", "contrata", "contratan", "ofrece", "ofrecen", "lanza", "lanzan", "refuerza", "refuerzan"]) {
+    const regex = new RegExp(`.+?\\b${verb}\\b`, 'i');
+    if (regex.test(title)) {
+      if (!title.toLowerCase().startsWith("buscamos") && !title.toLowerCase().startsWith("se busca")) {
+        return false;
+      }
+    }
+  }
+
+  // 9. Negative word list for title & description
   const negativeNewsKeywords = [
     "como hacer", "como mejorar", "como crear", "como usar", "como ser", "como conseguir", "como trabajar",
     "como utilizar", "como optimizar", "como redactar", "como planificar", "como diseñar",
     "consejos para", "consejos de", "claves para", "trucos para", "guia de", "guia para",
     "tendencias de", "tendencias en", "por que es", "que es un", "que es una", "que es el", "que es la",
-    "los mejores", "las mejores", "los 10", "los 5", "los 3", "los 7", "los 8", "cinco claves", "diez claves",
-    "el futuro de", "el impacto de", "el auge del", "el auge de", "crece un", "crecimiento de", "estudio revela", 
-    "informe sobre", "asi es", "de esta manera", "todo lo que necesitas saber", "guia completa", "guia definitiva", 
+    "los mejores", "las mejores", "asi es", "de esta manera", "todo lo que necesitas saber", "guia completa", "guia definitiva", 
     "consejos sobre", "claves del", "claves de la", "errores comunes", "errores al", "aprende a",
     "aprende como", "guia practica", "los beneficios de", "las ventajas de", "por que deberias", "el exito de",
-    "la importancia de", "entrevista a", "entrevista con", "curso de", "master en", "formacion en", "noticias",
-    "noticia", "revoluciona", "las claves", "claves del", "el mercado de", "empleo crece", "trabajo crece",
-    "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los", "historia de", "todo sobre",
+    "la importancia de", "entrevista a", "entrevista con", "noticias", "noticia", "revoluciona", "las claves", 
+    "el mercado de", "empleo crece", "trabajo crece", "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los",
     "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar",
     "herramientas para", "herramientas de", "el secreto", "mitos de", "mitos sobre", "paso a paso", "webinar",
     "masterclass", "taller de", "seminario", "conferencia", "podcast", "novedades", "opinion sobre", "analisis de",
     "analisis sobre", "reflexion sobre", "desafios de", "retos de", "digitalizacion de", "estrategias para",
     "consejo", "truco", "error que", "los errores", "pasos para", "para mejorar", "para optimizar", "triunfar en",
     "como ", "que es ", "que son ", "por que ",
-    "ofertas de empleo", "ofertas de trabajo", "puestos de trabajo", "empleos mas demandados", "empleos para", 
-    "trabajos para", "bolsas de empleo", "bolsa de empleo", "oportunidades de empleo", "oportunidades de trabajo", 
-    "convocatoria", "convocatorias", "oposiciones", "oposicion", "plazas de", "oferta publica", "empleo publico", 
-    "xunta", "ayuntamiento", "gobierno", "boletin", "boe", "bop", "boe.es", "diario oficial", "gaceta",
-    "periodico", "el pais", "el mundo", "la vanguardia", "noticia", "noticias", "articulo", "blog", "reportaje", 
-    "cronica", "lectura", "semana", "mes", "año", "hoy", "ayer", "segun", "informa", "anuncia", "publica", 
-    "analiza", "destaca", "revela", "alerta", "advierte", "descubre", "conoce las", "apuntate a", "asi puedes", 
-    "como apuntarse", "como inscribirse", "requisitos para acceder", "como acceder", "como trabajar en", 
-    "como conseguir empleo en", "donde encontrar", "las mejores empresas para", "empresas que buscan", "busca personal",
-    "busca trabajadores", "necesita incorporar", "oferta de empleo para", "ofertas de empleo en", "puestos vacantes",
-    "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a"
+    "empleos mas demandados", "empleos para", "trabajos para", "oportunidades de empleo", "oportunidades de trabajo", 
+    "boletin", "diario oficial", "gaceta", "periodico", "el pais", "el mundo", "la vanguardia", "lectura", "semana", "mes", "año", 
+    "hoy", "ayer", "segun", "informa", "anuncia", "publica", "analiza", "destaca", "revela", "alerta", "advierte", "descubre", 
+    "conoce las", "apuntate a", "asi puedes", "como apuntarse", "como inscribirse", "requisitos para acceder", "como acceder", 
+    "como trabajar en", "como conseguir empleo en", "donde encontrar", "las mejores empresas para", "empresas que buscan", 
+    "busca personal", "busca trabajadores", "necesita incorporar", "oferta de empleo para", "ofertas de empleo en", "puestos vacantes",
+    "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a",
+    "20minutos", "redaccion medica", "periodismo", "laboratorio de periodismo", "el nuevo rol", "rol del", "roles del",
+    "en la era", "era de", "la era de", "inteligencia artificial", "ia en", "ia para", "un importante animador", "un animador de",
+    "famoso animador", "famoso redactor", "famoso community", "exito en", "claves en", "despide de"
   ];
-
-  if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword))) {
+  if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword) || clean.includes(keyword))) {
     return false;
   }
 
-  // 4. Positive job vacancy indicators (must contain at least one to be an active offer)
+  // 10. Positive job indicators requirement
   const jobIndicators = [
     "empleo", "vacante", "trabajo", "buscamos", "unete", "contrata", "hiring", "career",
     "oferta", "puesto", "incorporacion", "jornada", "sueldo", "salario", "remunerado", "remunerada",
@@ -1352,24 +1419,29 @@ async function startServer() {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     
     // Database Cleanup: Remove any stale news articles or incompatible jobs that were previously imported
-    try {
-      const currentJobs = db.getJobs();
-      let prunedCount = 0;
-      for (const j of currentJobs) {
-        const isNiche = isJobMatchingNiche(j.title, j.description, j.industry);
-        const isImported = j.recruiterId === "web-importer";
-        const isJob = isActualJobOffer(j.title, j.description, isImported);
-        if (!isNiche || !isJob) {
-          db.deleteJob(j.id);
-          prunedCount++;
+    const runPruning = () => {
+      try {
+        const currentJobs = db.getJobs();
+        let prunedCount = 0;
+        for (const j of currentJobs) {
+          const isNiche = isJobMatchingNiche(j.title, j.description, j.industry);
+          const isImported = j.recruiterId === "web-importer";
+          const isJob = isActualJobOffer(j.title, j.description, isImported);
+          if (!isNiche || !isJob) {
+            db.deleteJob(j.id);
+            prunedCount++;
+          }
         }
+        if (prunedCount > 0) {
+          console.log(`🧹 [Startup Cleanup] Pruned ${prunedCount} non-job items / news articles from database.`);
+        }
+      } catch (cleanErr: any) {
+        console.error("⚠️ [Startup Cleanup] Failed to run database job pruning:", cleanErr.message || cleanErr);
       }
-      if (prunedCount > 0) {
-        console.log(`🧹 [Startup Cleanup] Pruned ${prunedCount} non-job items / news articles from database.`);
-      }
-    } catch (cleanErr: any) {
-      console.error("⚠️ [Startup Cleanup] Failed to run database job pruning:", cleanErr.message || cleanErr);
-    }
+    };
+
+    runPruning(); // Run immediately for local db.json
+    setTimeout(runPruning, 3500); // Run again after 3.5 seconds to cleanly prune rows loaded from PostgreSQL background sync
 
     // Trigger automatic synchronization 5 seconds after startup
     setTimeout(() => {
