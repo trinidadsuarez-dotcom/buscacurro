@@ -424,12 +424,23 @@ async function initPostgresSchema() {
 
     console.log("🐘 [PostgreSQL] Schema matches successfully.");
 
-    // Guarantee default jobs have correct URLs in PostgreSQL
-    for (const defJob of DEFAULT_JOBS) {
+    // Always guarantee that default jobs exist in PostgreSQL and are correctly classified
+    for (const j of DEFAULT_JOBS) {
       await pool.query(`
-        UPDATE jobs SET url = $1 WHERE id = $2 AND url IS NULL
-      `, [defJob.url, defJob.id]).catch(err => {
-        console.warn("🐘 [PostgreSQL] Failed to backfill URL for default job:", defJob.id, err.message);
+        INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (id) DO UPDATE SET
+          title = EXCLUDED.title,
+          company = EXCLUDED.company,
+          description = EXCLUDED.description,
+          location = EXCLUDED.location,
+          type = EXCLUDED.type,
+          salary_min = EXCLUDED.salary_min,
+          salary_max = EXCLUDED.salary_max,
+          industry = EXCLUDED.industry,
+          url = COALESCE(jobs.url, EXCLUDED.url)
+      `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null]).catch(err => {
+        console.warn("🐘 [PostgreSQL] Failed to upsert default job:", j.id, err.message);
       });
     }
 

@@ -306,7 +306,35 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  // 1. Thorough negative keywords in title to catch news, blog articles, tutorials, courses, and guides
+  // 1. Check Spanish language requirement:
+  // Must contain some common Spanish words to ensure it's written in Spanish
+  const spanishStopwords = [" de ", " la ", " el ", " en ", " para ", " que ", " con ", " los ", " las ", " por ", " del ", " una ", " como "];
+  let spanishWordMatches = 0;
+  for (const word of spanishStopwords) {
+    const regex = new RegExp(word, 'g');
+    const matches = combined.match(regex);
+    if (matches) {
+      spanishWordMatches += matches.length;
+    }
+  }
+  // Require at least 3 occurrences of Spanish words to be considered Spanish.
+  if (spanishWordMatches < 3) {
+    return false;
+  }
+
+  // 2. Spain Focus & Anti-Latin-America requirement:
+  // Exclude jobs mentioning Latin American countries, cities, or currencies
+  const latinAmericaKeywords = [
+    "mexico", "colombia", "argentina", "chile", "peru", "ecuador", "venezuela", "uruguay", "paraguay", 
+    "bolivia", "guatemala", "costa rica", "republica dominicana", "panama", "honduras", "salvador", "nicaragua",
+    "bogota", "buenos aires", "santiago de chile", "lima", "quito", "caracas", "montevideo", "asuncion", "la paz",
+    "latam", "latinoamerica", "pesos", "soles", "mexicano", "colombiano", "argentino", "chileno", "peruano"
+  ];
+  if (latinAmericaKeywords.some(keyword => cleanTitle.includes(keyword) || clean.includes(keyword))) {
+    return false;
+  }
+
+  // 3. Thorough negative keywords in title to catch news, blog articles, tutorials, courses, and guides
   const negativeNewsKeywords = [
     "como hacer", "como mejorar", "como crear", "como usar", "como ser", "como conseguir", "como trabajar",
     "como utilizar", "como optimizar", "como redactar", "como planificar", "como diseñar",
@@ -325,14 +353,25 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "masterclass", "taller de", "seminario", "conferencia", "podcast", "novedades", "opinion sobre", "analisis de",
     "analisis sobre", "reflexion sobre", "desafios de", "retos de", "digitalizacion de", "estrategias para",
     "consejo", "truco", "error que", "los errores", "pasos para", "para mejorar", "para optimizar", "triunfar en",
-    "como ", "que es ", "que son ", "por que "
+    "como ", "que es ", "que son ", "por que ",
+    "ofertas de empleo", "ofertas de trabajo", "puestos de trabajo", "empleos mas demandados", "empleos para", 
+    "trabajos para", "bolsas de empleo", "bolsa de empleo", "oportunidades de empleo", "oportunidades de trabajo", 
+    "convocatoria", "convocatorias", "oposiciones", "oposicion", "plazas de", "oferta publica", "empleo publico", 
+    "xunta", "ayuntamiento", "gobierno", "boletin", "boe", "bop", "boe.es", "diario oficial", "gaceta",
+    "periodico", "el pais", "el mundo", "la vanguardia", "noticia", "noticias", "articulo", "blog", "reportaje", 
+    "cronica", "lectura", "semana", "mes", "año", "hoy", "ayer", "segun", "informa", "anuncia", "publica", 
+    "analiza", "destaca", "revela", "alerta", "advierte", "descubre", "conoce las", "apuntate a", "asi puedes", 
+    "como apuntarse", "como inscribirse", "requisitos para acceder", "como acceder", "como trabajar en", 
+    "como conseguir empleo en", "donde encontrar", "las mejores empresas para", "empresas que buscan", "busca personal",
+    "busca trabajadores", "necesita incorporar", "oferta de empleo para", "ofertas de empleo en", "puestos vacantes",
+    "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a"
   ];
 
   if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword))) {
     return false;
   }
 
-  // 2. Positive job vacancy indicators (must contain at least one to be an active offer)
+  // 4. Positive job vacancy indicators (must contain at least one to be an active offer)
   const jobIndicators = [
     "empleo", "vacante", "trabajo", "buscamos", "unete", "contrata", "hiring", "career",
     "oferta", "puesto", "incorporacion", "jornada", "sueldo", "salario", "remunerado", "remunerada",
@@ -609,6 +648,11 @@ app.post("/api/jobs/import-external", async (req, res) => {
 
         // Ensure newly imported API jobs fit the strict 6-category target
         if (!isJobMatchingNiche(item.title, excerptDesc, industry)) {
+          continue;
+        }
+
+        // Filter out informational news or non-Spanish / non-Spain vacancies
+        if (!isActualJobOffer(item.title, excerptDesc, true)) {
           continue;
         }
 
@@ -1182,6 +1226,11 @@ async function runAutomaticJobSync() {
 
           // Apply strict niche check
           if (!isJobMatchingNiche(item.title, excerptDesc, industry)) {
+            continue;
+          }
+
+          // Filter out informational news or non-Spanish / non-Spain vacancies
+          if (!isActualJobOffer(item.title, excerptDesc, true)) {
             continue;
           }
 
