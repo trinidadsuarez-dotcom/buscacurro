@@ -306,6 +306,17 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+  // Helper to normalize and check if a keyword array matches the clean content
+  const matchesKeyword = (keywords: string[], target: string): boolean => {
+    return keywords.some(keyword => {
+      const cleanKw = keyword
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      return target.includes(cleanKw);
+    });
+  };
+
   // 1. Check Spanish language requirement:
   const spanishStopwords = [" de ", " la ", " el ", " en ", " para ", " que ", " con ", " los ", " las ", " por ", " del ", " una ", " como "];
   let spanishWordMatches = 0;
@@ -328,7 +339,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "bogota", "buenos aires", "santiago de chile", "lima", "quito", "caracas", "montevideo", "asuncion", "la paz",
     "latam", "latinoamerica", "pesos", "soles", "mexicano", "colombiano", "argentino", "chileno", "peruano"
   ];
-  if (latinAmericaKeywords.some(keyword => cleanTitle.includes(keyword) || clean.includes(keyword))) {
+  if (matchesKeyword(latinAmericaKeywords, cleanTitle) || matchesKeyword(latinAmericaKeywords, clean)) {
     return false;
   }
 
@@ -342,7 +353,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
   const commemorativeKeywords = [
     "dia del", "dia mundial", "dia internacional", "dia de la", "dia de los", "celebra", "celebracion", "efemerides"
   ];
-  if (commemorativeKeywords.some(kw => cleanTitle.includes(kw))) {
+  if (matchesKeyword(commemorativeKeywords, cleanTitle)) {
     return false;
   }
 
@@ -352,7 +363,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "formacion en", "facultad de", "universidad de", "colegio de", "instituto de", "temario", "introduccion al", "introduccion a la",
     "fundamentos de", "aprende a", "aprender a", "becas de", "becas para"
   ];
-  if (educationalKeywords.some(kw => cleanTitle.includes(kw) || clean.includes(kw))) {
+  if (matchesKeyword(educationalKeywords, cleanTitle) || matchesKeyword(educationalKeywords, clean)) {
     return false;
   }
 
@@ -365,7 +376,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "tecnico/a medio", "concurso de meritos", "meritos", "concurso-oposicion", "concurso oposicion", "consorcio",
     "cccb", "centre de cultura", "patronato"
   ];
-  if (publicSectorKeywords.some(kw => cleanTitle.includes(kw) || clean.includes(kw))) {
+  if (matchesKeyword(publicSectorKeywords, cleanTitle) || matchesKeyword(publicSectorKeywords, clean)) {
     return false;
   }
 
@@ -380,7 +391,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "opinion sobre", "opinion de", "reflexion sobre", "equipa", "equipan", "lanzo", "lanzaron", "compro", "vendio", "fallecio",
     "murio", "despidio", "incorporo", "retira", "se retira", "jubila", "se jubila"
   ];
-  if (storyVerbs.some(verb => cleanTitle.includes(verb) || clean.includes(verb))) {
+  if (matchesKeyword(storyVerbs, cleanTitle) || matchesKeyword(storyVerbs, clean)) {
     return false;
   }
 
@@ -432,9 +443,16 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a",
     "20minutos", "redaccion medica", "periodismo", "laboratorio de periodismo", "el nuevo rol", "rol del", "roles del",
     "en la era", "era de", "la era de", "inteligencia artificial", "ia en", "ia para", "un importante animador", "un animador de",
-    "famoso animador", "famoso redactor", "famoso community", "exito en", "claves en", "despide de"
+    "famoso animador", "famoso redactor", "famoso community", "exito en", "claves en", "despide de",
+    "comunicado", "nota de prensa", "comunicado de prensa", "carta abierta", "editorial", "opinion", "declaraciones", 
+    "declaracion", "manifiesto", "rueda de prensa", "aumento de", "aumento del", "aumentado", "aumento", "crecimiento", 
+    "crece", "crece un", "crece el", "disminuye", "disminucion", "caida", "record de", "cifras de", "estudio", "informe", 
+    "analisis", "segun un", "segun el", "segun la", "segun", "novedad", "novedades", "historia", "historias", "trayectoria", 
+    "fundador", "fundadora", "fundadores", "director ejecutivo", "consejero delegado", "ceos", "fichaje", "fichajes", 
+    "fichar", "fichara", "ficharon", "nombra", "nombran", "nombramiento", "nombramientos", "ascenso", "ascensos", 
+    "reestructuracion", "despido", "despidos", "recorte", "recortes", "ere", "erte", "huelga", "huelgas", "protesta", "protestas"
   ];
-  if (negativeNewsKeywords.some(keyword => cleanTitle.includes(keyword) || clean.includes(keyword))) {
+  if (matchesKeyword(negativeNewsKeywords, cleanTitle) || matchesKeyword(negativeNewsKeywords, clean)) {
     return false;
   }
 
@@ -452,8 +470,7 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "social media", "community manager", "copywriting", "audiovisual", "seo", "sem"
   ];
 
-  const hasJobKeyword = jobIndicators.some(indicator => clean.includes(indicator));
-  return hasJobKeyword;
+  return matchesKeyword(jobIndicators, clean);
 }
 
 // Fallback Helper to parse RSS XML manually without requiring Gemini API
