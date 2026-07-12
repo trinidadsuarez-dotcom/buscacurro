@@ -112,6 +112,85 @@ const DEFAULT_JOBS: Job[] = [
   }
 ];
 
+export function categorizeIntoNiche(title: string, description: string, originalIndustry: string = ""): string {
+  const combined = `${title} ${description} ${originalIndustry}`.toLowerCase();
+  
+  // Normalize accents/diacritics
+  const clean = combined
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (
+    clean.includes("animacion") || 
+    clean.includes("animador") || 
+    clean.includes("motion graphics") || 
+    clean.includes("animation") || 
+    clean.includes("animating") ||
+    originalIndustry === "Producción de Animación"
+  ) {
+    return "Producción de Animación";
+  }
+  
+  if (
+    clean.includes("audiovisual") || 
+    clean.includes("video") || 
+    clean.includes("filmmaker") || 
+    clean.includes("sonido") || 
+    clean.includes("cine") || 
+    clean.includes("edicion") || 
+    clean.includes("editor de video") ||
+    clean.includes("productor") ||
+    originalIndustry === "Producción Audiovisual"
+  ) {
+    return "Producción Audiovisual";
+  }
+
+  if (
+    clean.includes("community manager") || 
+    clean.includes("cm") || 
+    clean.includes("comunidad") || 
+    clean.includes("moderador") || 
+    clean.includes("moderacion") ||
+    originalIndustry === "Community Manager"
+  ) {
+    return "Community Manager";
+  }
+  
+  if (
+    clean.includes("social media") || 
+    clean.includes("rrss") || 
+    clean.includes("redes sociales") || 
+    clean.includes("social media manager") || 
+    clean.includes("instagram") || 
+    clean.includes("tiktok") || 
+    clean.includes("twitter") ||
+    originalIndustry === "Social Media Manager"
+  ) {
+    return "Social Media Manager";
+  }
+
+  if (
+    clean.includes("redaccion") || 
+    clean.includes("redactor") || 
+    clean.includes("copywriter") || 
+    clean.includes("copywriting") || 
+    clean.includes("escritor") || 
+    clean.includes("escritura") || 
+    clean.includes("articulos") || 
+    clean.includes("writer") || 
+    clean.includes("writing") || 
+    clean.includes("contenidos") || 
+    clean.includes("content writer") || 
+    clean.includes("redactar") ||
+    originalIndustry === "Redacción Web"
+  ) {
+    return "Redacción Web";
+  }
+
+  // Default fallback
+  return "Marketing Digital";
+}
+
 function initDB(): DatabaseSchema {
   if (fs.existsSync(DB_FILE)) {
     try {
@@ -129,6 +208,13 @@ function initDB(): DatabaseSchema {
           location: 'Global',
           industry: 'Tecnología'
         });
+      }
+      // Normalize loaded jobs in DB cache
+      if (parsed.jobs && Array.isArray(parsed.jobs)) {
+        parsed.jobs = parsed.jobs.map((j: any) => ({
+          ...j,
+          industry: categorizeIntoNiche(j.title, j.description, j.industry)
+        }));
       }
       return parsed;
     } catch (e) {
@@ -390,21 +476,27 @@ async function initPostgresSchema() {
         });
       }
 
-      const mappedJobs: Job[] = jobsRes.rows.map((j: any) => ({
-        id: j.id,
-        title: j.title,
-        company: j.company,
-        description: j.description,
-        location: j.location,
-        type: j.type as 'local' | 'remote',
-        salaryMin: Number(j.salary_min) || 0,
-        salaryMax: Number(j.salary_max) || 0,
-        industry: j.industry,
-        recruiterId: j.recruiter_id,
-        postedAt: j.posted_at,
-        isVerifiedCompany: !!j.is_verified_company,
-        url: j.url || undefined
-      }));
+      const mappedJobs: Job[] = jobsRes.rows.map((j: any) => {
+        const normIndustry = categorizeIntoNiche(j.title, j.description, j.industry);
+        if (normIndustry !== j.industry) {
+          pgWrite(`UPDATE jobs SET industry = $1 WHERE id = $2`, [normIndustry, j.id]);
+        }
+        return {
+          id: j.id,
+          title: j.title,
+          company: j.company,
+          description: j.description,
+          location: j.location,
+          type: j.type as 'local' | 'remote',
+          salaryMin: Number(j.salary_min) || 0,
+          salaryMax: Number(j.salary_max) || 0,
+          industry: normIndustry,
+          recruiterId: j.recruiter_id,
+          postedAt: j.posted_at,
+          isVerifiedCompany: !!j.is_verified_company,
+          url: j.url || undefined
+        };
+      });
 
       const mappedApps: Application[] = appsRes.rows.map((a: any) => ({
         id: a.id,
@@ -528,6 +620,9 @@ export const db = {
   getJobs: (): Job[] => dbState.data.jobs,
   getJobById: (id: string): Job | undefined => dbState.data.jobs.find(j => j.id === id),
   addJob: (job: Job): Job => {
+    // Standardize industry based on niche classification
+    job.industry = categorizeIntoNiche(job.title, job.description, job.industry);
+
     dbState.data.jobs.push(job);
     save();
 

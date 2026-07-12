@@ -6,7 +6,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { db } from "./server/db.ts";
+import { db, categorizeIntoNiche } from "./server/db.ts";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { Job } from "./src/types.ts";
@@ -680,7 +680,7 @@ Esquema de salida:
 - type: Estrictamente "local" o "remote".
 - salaryMin: Salario mínimo anual en EUR (número estimado de mercado o 0 si no se indica).
 - salaryMax: Salario máximo anual en EUR (número estimado de mercado o 0 si no se indica).
-- industry: Sector de la vacante ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+- industry: Sector de la vacante, clasificado estrictamente en una de estas categorías de creadores digitales: "Marketing Digital", "Redacción Web", "Social Media Manager", "Community Manager", "Producción Audiovisual", "Producción de Animación".
 - url: Enlace o URL original del item RSS (del tag <link>).
 
 Devuelve un objeto JSON con una propiedad "jobs" que sea un array de estos objetos.
@@ -843,7 +843,7 @@ Esquema JSON requerido:
 5. type: Estrictamente "local" o "remote".
 6. salaryMin: Salario anual mínimo estimado en EUR (número, usa 0 si no se menciona o no es deducible).
 7. salaryMax: Salario anual máximo estimado en EUR (número, usa 0 si no se menciona o no es deducible).
-8. industry: Sector de la oferta ("Tecnología", "Marketing", "Finanzas", "Diseño", "Otros").
+8. industry: Sector de la oferta, clasificado estrictamente en una de estas categorías de creadores digitales: "Marketing Digital", "Redacción Web", "Social Media Manager", "Community Manager", "Producción Audiovisual", "Producción de Animación".
 
 Devuelve únicamente el objeto JSON con estos campos.
 `;
