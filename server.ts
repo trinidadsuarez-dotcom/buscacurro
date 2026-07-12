@@ -417,8 +417,34 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     }
   }
 
-  // 9. Negative word list for title & description
-  const negativeNewsKeywords = [
+  // 9. Negative word list for title-only checks & anywhere checks
+  const negativeNewsKeywordsTitleOnly = [
+    "segun un", "segun el", "segun la", "segun", "noticias", "noticia", "revoluciona", 
+    "el mercado de", "empleo crece", "trabajo crece", "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los",
+    "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar",
+    "el secreto", "mitos de", "mitos sobre", "paso a paso", "novedades", "opinion sobre", "analisis de",
+    "analisis sobre", "reflexion sobre", "desafios de", "retos de", "digitalizacion de", "estrategias para",
+    "consejo", "truco", "error que", "los errores", "pasos para", "para mejorar", "para optimizar", "triunfar en",
+    "como ", "que es ", "que son ", "por que ",
+    "empleos mas demandados", "empleos para", "trabajos para", "oportunidades de empleo", "oportunidades de trabajo", 
+    "boletin", "diario oficial", "gaceta", "periodico", "el pais", "el mundo", "la vanguardia", "lectura", "semana", "mes", "año", 
+    "hoy", "ayer", "informa", "anuncia", "publica", "analiza", "destaca", "revela", "alerta", "advierte", "descubre", 
+    "conoce las", "apuntate a", "asi puedes", "como apuntarse", "como inscribirse", "requisitos para acceder", "como acceder", 
+    "como trabajar en", "como conseguir empleo en", "donde encontrar", "las mejores empresas para", "empresas que buscan", 
+    "busca personal", "busca trabajadores", "necesita incorporar", "oferta de empleo para", "ofertas de empleo en", "puestos vacantes",
+    "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a",
+    "el nuevo rol", "rol del", "roles del", "en la era", "era de", "la era de", "inteligencia artificial", "ia en", "ia para", 
+    "un importante animador", "un animador de", "famoso animador", "famoso redactor", "famoso community", "exito en", "claves en", "despide de",
+    "comunicado", "nota de prensa", "comunicado de prensa", "carta abierta", "editorial", "opinion", "declaraciones", 
+    "declaracion", "manifiesto", "rueda de prensa", "aumento de", "aumento del", "aumentado", "aumento", "crecimiento", 
+    "crece", "crece un", "crece el", "disminuye", "disminucion", "caida", "record de", "cifras de", "estudio", "informe", 
+    "analisis", "novedad", "historia", "historias", "trayectoria", 
+    "fundador", "fundadora", "fundadores", "director ejecutivo", "consejero delegado", "ceos", "fichaje", "fichajes", 
+    "fichar", "fichara", "ficharon", "nombra", "nombran", "nombramiento", "nombramientos", "ascenso", "ascensos", 
+    "reestructuracion", "despido", "despidos", "recorte", "recortes", "ere", "erte", "huelga", "huelgas", "protesta", "protestas"
+  ];
+
+  const negativeNewsKeywordsAnywhere = [
     "como hacer", "como mejorar", "como crear", "como usar", "como ser", "como conseguir", "como trabajar",
     "como utilizar", "como optimizar", "como redactar", "como planificar", "como diseñar",
     "consejos para", "consejos de", "claves para", "trucos para", "guia de", "guia para",
@@ -426,33 +452,17 @@ function isActualJobOffer(title: string, description: string, isExternalImport: 
     "los mejores", "las mejores", "asi es", "de esta manera", "todo lo que necesitas saber", "guia completa", "guia definitiva", 
     "consejos sobre", "claves del", "claves de la", "errores comunes", "errores al", "aprende a",
     "aprende como", "guia practica", "los beneficios de", "las ventajas de", "por que deberias", "el exito de",
-    "la importancia de", "entrevista a", "entrevista con", "noticias", "noticia", "revoluciona", "las claves", 
-    "el mercado de", "empleo crece", "trabajo crece", "asi influye", "como influye", "conoce a", "conoce el", "conoce la", "conoce los",
-    "¿como", "como redactar un", "claves para redactar", "consejos para redactores", "aprender redactar",
-    "herramientas para", "herramientas de", "el secreto", "mitos de", "mitos sobre", "paso a paso", "webinar",
-    "masterclass", "taller de", "seminario", "conferencia", "podcast", "novedades", "opinion sobre", "analisis de",
-    "analisis sobre", "reflexion sobre", "desafios de", "retos de", "digitalizacion de", "estrategias para",
-    "consejo", "truco", "error que", "los errores", "pasos para", "para mejorar", "para optimizar", "triunfar en",
-    "como ", "que es ", "que son ", "por que ",
-    "empleos mas demandados", "empleos para", "trabajos para", "oportunidades de empleo", "oportunidades de trabajo", 
-    "boletin", "diario oficial", "gaceta", "periodico", "el pais", "el mundo", "la vanguardia", "lectura", "semana", "mes", "año", 
-    "hoy", "ayer", "segun", "informa", "anuncia", "publica", "analiza", "destaca", "revela", "alerta", "advierte", "descubre", 
-    "conoce las", "apuntate a", "asi puedes", "como apuntarse", "como inscribirse", "requisitos para acceder", "como acceder", 
-    "como trabajar en", "como conseguir empleo en", "donde encontrar", "las mejores empresas para", "empresas que buscan", 
-    "busca personal", "busca trabajadores", "necesita incorporar", "oferta de empleo para", "ofertas de empleo en", "puestos vacantes",
-    "se busca personal", "abre bolsa", "abre plazo", "plazo de inscripcion", "bolsa de trabajo de", "oposiciones a",
-    "20minutos", "redaccion medica", "periodismo", "laboratorio de periodismo", "el nuevo rol", "rol del", "roles del",
-    "en la era", "era de", "la era de", "inteligencia artificial", "ia en", "ia para", "un importante animador", "un animador de",
-    "famoso animador", "famoso redactor", "famoso community", "exito en", "claves en", "despide de",
-    "comunicado", "nota de prensa", "comunicado de prensa", "carta abierta", "editorial", "opinion", "declaraciones", 
-    "declaracion", "manifiesto", "rueda de prensa", "aumento de", "aumento del", "aumentado", "aumento", "crecimiento", 
-    "crece", "crece un", "crece el", "disminuye", "disminucion", "caida", "record de", "cifras de", "estudio", "informe", 
-    "analisis", "segun un", "segun el", "segun la", "segun", "novedad", "novedades", "historia", "historias", "trayectoria", 
-    "fundador", "fundadora", "fundadores", "director ejecutivo", "consejero delegado", "ceos", "fichaje", "fichajes", 
-    "fichar", "fichara", "ficharon", "nombra", "nombran", "nombramiento", "nombramientos", "ascenso", "ascensos", 
-    "reestructuracion", "despido", "despidos", "recorte", "recortes", "ere", "erte", "huelga", "huelgas", "protesta", "protestas"
+    "la importance de", "entrevista a", "entrevista con", "revoluciona", "las claves",
+    "herramientas para", "herramientas de", "mitos de", "mitos sobre", "webinar",
+    "masterclass", "taller de", "seminario", "conferencia", "podcast",
+    "20minutos", "redaccion medica", "periodismo", "laboratorio de periodismo"
   ];
-  if (matchesKeyword(negativeNewsKeywords, cleanTitle) || matchesKeyword(negativeNewsKeywords, clean)) {
+
+  if (matchesKeyword(negativeNewsKeywordsTitleOnly, cleanTitle)) {
+    return false;
+  }
+
+  if (matchesKeyword(negativeNewsKeywordsAnywhere, cleanTitle) || matchesKeyword(negativeNewsKeywordsAnywhere, clean)) {
     return false;
   }
 
