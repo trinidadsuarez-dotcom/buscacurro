@@ -30,6 +30,7 @@ export interface Job {
   postedAt: string;
   isVerifiedCompany: boolean;
   url?: string;
+  source?: string;
 }
 
 export type ApplicationStatus = 'Applied' | 'Screening' | 'Interview' | 'Offered' | 'Rejected';

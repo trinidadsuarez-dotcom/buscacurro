@@ -34,7 +34,7 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
   const [type, setType] = useState<'local' | 'remote'>('local');
   const [salaryMin, setSalaryMin] = useState(30000);
   const [salaryMax, setSalaryMax] = useState(45000);
-  const [industry, setIndustry] = useState('Tecnología');
+  const [industry, setIndustry] = useState('Marketing Digital');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -43,6 +43,10 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
     e.preventDefault();
     if (!title || !company || !description || !location) {
       setErrorMsg("Todos los campos obligatorios son requeridos.");
+      return;
+    }
+    if (salaryMin < 0 || salaryMax < salaryMin) {
+      setErrorMsg("El salario máximo debe ser igual o superior al salario mínimo.");
       return;
     }
 
@@ -290,12 +294,12 @@ export const RecruiterDashboard: React.FC<RecruiterDashboardProps> = ({
                   onChange={(e) => setIndustry(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-xs text-gray-800 focus:border-indigo-500 focus:bg-white focus:outline-none"
                 >
-                  <option value="Tecnología">Tecnología / Software</option>
-                  <option value="Marketing">Marketing / Publicidad</option>
-                  <option value="Finanzas">Finanzas / Banca</option>
-                  <option value="Diseño">Diseño / Creativos</option>
-                  <option value="Soporte">Atención / Soporte Cloud</option>
-                  <option value="Ventas">Ventas / Comercial</option>
+                  <option value="Marketing Digital">Marketing Digital</option>
+                  <option value="Redacción Web">Copywriting / Redacción Web</option>
+                  <option value="Social Media Manager">Social Media Manager</option>
+                  <option value="Community Manager">Community Manager</option>
+                  <option value="Producción Audiovisual">Producción Audiovisual</option>
+                  <option value="Producción de Animación">Animación 2D / 3D</option>
                 </select>
               </div>
             </div>

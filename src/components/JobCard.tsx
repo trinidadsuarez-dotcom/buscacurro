@@ -71,6 +71,11 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isSelected, onSelect }) =
           <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
             {job.industry}
           </span>
+          {job.source && (
+            <span className="text-[9px] font-semibold text-gray-400">
+              Fuente: {job.source}
+            </span>
+          )}
           <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
             job.type === 'remote' ? 'bg-sky-50 text-sky-700' : 'bg-gray-50 text-gray-700'
           }`}>
@@ -90,7 +95,9 @@ export const JobCard: React.FC<JobCardProps> = ({ job, isSelected, onSelect }) =
         <div className="flex items-center gap-1 text-gray-700 font-medium">
           <DollarSign className="h-3.5 w-3.5 text-gray-400" />
           <span>
-            {formatSalary(job.salaryMin)} - {formatSalary(job.salaryMax)}
+            {job.salaryMax > 0
+              ? `${formatSalary(job.salaryMin)} - ${formatSalary(job.salaryMax)}`
+              : 'Salario no indicado'}
           </span>
         </div>
         <div className="flex items-center gap-1 text-gray-500">

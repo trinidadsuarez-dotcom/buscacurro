@@ -98,7 +98,9 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
 
                 {/* Content info */}
                 <div className="space-y-1.5 flex-1 pr-3">
-                  <p className="text-xs text-gray-800 leading-relaxed font-sans font-medium" dangerouslySetInnerHTML={{ __html: notif.message }} />
+                  <p className="text-xs text-gray-800 leading-relaxed font-sans font-medium whitespace-pre-wrap">
+                    {notif.message}
+                  </p>
                   
                   {/* Metadata & Email Sent Simulator indicator */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[9px] text-gray-400 font-mono">

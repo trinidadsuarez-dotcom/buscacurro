@@ -3,13 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import pg from 'pg';
 import { User, Job, Application, Notification, ApplicationStatus } from '../src/types.js';
 
 const { Pool } = pg;
-const DB_FILE = path.join(process.cwd(), 'db.json');
+const DB_FILE = process.env.DB_FILE
+  ? path.resolve(process.env.DB_FILE)
+  : path.join(process.cwd(), 'db.json');
 
 // Interface for Cache / local fallback
 interface DatabaseSchema {
@@ -126,6 +129,13 @@ export function categorizeIntoNiche(title: string, description: string, original
     clean.includes("motion graphics") || 
     clean.includes("animation") || 
     clean.includes("animating") ||
+    clean.includes("2d artist") ||
+    clean.includes("3d artist") ||
+    clean.includes("2d animator") ||
+    clean.includes("3d animator") ||
+    clean.includes("storyboard") ||
+    clean.includes("vfx") ||
+    clean.includes("character artist") ||
     originalIndustry === "Producción de Animación"
   ) {
     return "Producción de Animación";
@@ -140,6 +150,10 @@ export function categorizeIntoNiche(title: string, description: string, original
     clean.includes("edicion") || 
     clean.includes("editor de video") ||
     clean.includes("productor") ||
+    clean.includes("videographer") ||
+    clean.includes("postproduccion") ||
+    clean.includes("motion designer") ||
+    clean.includes("video editor") ||
     originalIndustry === "Producción Audiovisual"
   ) {
     return "Producción Audiovisual";
@@ -147,7 +161,6 @@ export function categorizeIntoNiche(title: string, description: string, original
 
   if (
     clean.includes("community manager") || 
-    clean.includes("cm") || 
     clean.includes("comunidad") || 
     clean.includes("moderador") || 
     clean.includes("moderacion") ||
@@ -185,6 +198,18 @@ export function categorizeIntoNiche(title: string, description: string, original
     originalIndustry === "Redacción Web"
   ) {
     return "Redacción Web";
+  }
+
+  if (
+    clean.includes("marketing") ||
+    clean.includes("seo") ||
+    clean.includes("sem") ||
+    clean.includes("paid media") ||
+    clean.includes("email marketing") ||
+    clean.includes("growth") ||
+    clean.includes("content strategist")
+  ) {
+    return "Marketing Digital";
   }
 
   // Default fallback
@@ -328,6 +353,7 @@ function save() {
 // -------------------------------------------------------------
 let pool: pg.Pool | null = null;
 const isPgConfigured = !!(process.env.DATABASE_URL || process.env.PGHOST);
+export let databaseReady: Promise<void> = Promise.resolve();
 
 if (isPgConfigured) {
   try {
@@ -344,7 +370,7 @@ if (isPgConfigured) {
     console.log("🐘 [PostgreSQL] Initializing Pool with config:", process.env.DATABASE_URL ? "DATABASE_URL" : "Individual Env Vars");
     
     // Async Background setup
-    initPostgresSchema();
+    databaseReady = initPostgresSchema();
   } catch (err) {
     console.error("❌ [PostgreSQL] Pool initialization error:", err);
   }
@@ -386,7 +412,8 @@ async function initPostgresSchema() {
         recruiter_id VARCHAR(255),
         posted_at VARCHAR(255),
         is_verified_company BOOLEAN DEFAULT FALSE,
-        url VARCHAR(2048)
+        url VARCHAR(2048),
+        source VARCHAR(255)
       );
     `);
 
@@ -396,6 +423,7 @@ async function initPostgresSchema() {
     `).catch(err => {
       console.warn("🐘 [PostgreSQL] Optional alter table jobs failed (column might already exist):", err.message);
     });
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS source VARCHAR(255);`);
 
     // Create applications
     await pool.query(`
@@ -418,17 +446,19 @@ async function initPostgresSchema() {
         message TEXT,
         type VARCHAR(50),
         read BOOLEAN DEFAULT FALSE,
-        created_at VARCHAR(255)
+        created_at VARCHAR(255),
+        email_sent_to VARCHAR(255)
       );
     `);
+    await pool.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS email_sent_to VARCHAR(255);`);
 
     console.log("🐘 [PostgreSQL] Schema matches successfully.");
 
     // Always guarantee that default jobs exist in PostgreSQL and are correctly classified
     for (const j of DEFAULT_JOBS) {
       await pool.query(`
-        INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url, source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (id) DO UPDATE SET
           title = EXCLUDED.title,
           company = EXCLUDED.company,
@@ -438,8 +468,9 @@ async function initPostgresSchema() {
           salary_min = EXCLUDED.salary_min,
           salary_max = EXCLUDED.salary_max,
           industry = EXCLUDED.industry,
-          url = COALESCE(jobs.url, EXCLUDED.url)
-      `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null]).catch(err => {
+          url = COALESCE(jobs.url, EXCLUDED.url),
+          source = COALESCE(jobs.source, EXCLUDED.source)
+      `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null, j.source || 'TrabajoLocal']).catch(err => {
         console.warn("🐘 [PostgreSQL] Failed to upsert default job:", j.id, err.message);
       });
     }
@@ -505,7 +536,8 @@ async function initPostgresSchema() {
           recruiterId: j.recruiter_id,
           postedAt: j.posted_at,
           isVerifiedCompany: !!j.is_verified_company,
-          url: j.url || undefined
+          url: j.url || undefined,
+          source: j.source || undefined
         };
       });
 
@@ -525,7 +557,8 @@ async function initPostgresSchema() {
         message: n.message,
         type: n.type as 'info' | 'success' | 'alert' | 'email_simulated',
         read: !!n.read,
-        createdAt: n.created_at
+        createdAt: n.created_at,
+        emailSentTo: n.email_sent_to || undefined
       }));
 
       dbState.data = {
@@ -547,10 +580,10 @@ async function initPostgresSchema() {
 
       for (const j of dbState.data.jobs) {
         await pool.query(`
-          INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url, source)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           ON CONFLICT (id) DO NOTHING
-        `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null]);
+        `, [j.id, j.title, j.company, j.description, j.location, j.type, j.salaryMin, j.salaryMax, j.industry, j.recruiterId, j.postedAt, j.isVerifiedCompany || false, j.url || null, j.source || 'TrabajoLocal']);
       }
 
       for (const a of dbState.data.applications) {
@@ -563,10 +596,10 @@ async function initPostgresSchema() {
 
       for (const n of dbState.data.notifications) {
         await pool.query(`
-          INSERT INTO notifications (id, user_id, message, type, read, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO notifications (id, user_id, message, type, read, created_at, email_sent_to)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT (id) DO NOTHING
-        `, [n.id, n.userId, n.message, n.type, n.read || false, n.createdAt]);
+        `, [n.id, n.userId, n.message, n.type, n.read || false, n.createdAt, n.emailSentTo || null]);
       }
 
       console.log("🐘 [PostgreSQL] Initial seed complete!");
@@ -639,10 +672,10 @@ export const db = {
 
     // PG Sync
     pgWrite(`
-      INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      INSERT INTO jobs (id, title, company, description, location, type, salary_min, salary_max, industry, recruiter_id, posted_at, is_verified_company, url, source)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (id) DO NOTHING
-    `, [job.id, job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null]);
+    `, [job.id, job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null, job.source || 'TrabajoLocal']);
 
     return job;
   },
@@ -656,9 +689,9 @@ export const db = {
     const job = dbState.data.jobs[idx];
     pgWrite(`
       UPDATE jobs
-      SET title = $1, company = $2, description = $3, location = $4, type = $5, salary_min = $6, salary_max = $7, industry = $8, recruiter_id = $9, posted_at = $10, is_verified_company = $11, url = $12
-      WHERE id = $13
-    `, [job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null, id]);
+      SET title = $1, company = $2, description = $3, location = $4, type = $5, salary_min = $6, salary_max = $7, industry = $8, recruiter_id = $9, posted_at = $10, is_verified_company = $11, url = $12, source = $13
+      WHERE id = $14
+    `, [job.title, job.company, job.description, job.location, job.type, job.salaryMin, job.salaryMax, job.industry, job.recruiterId, job.postedAt, job.isVerifiedCompany || false, job.url || null, job.source || 'TrabajoLocal', id]);
 
     return dbState.data.jobs[idx];
   },
@@ -677,6 +710,11 @@ export const db = {
 
   // Applications
   getApplications: (): Application[] => dbState.data.applications,
+  hasApplication: (candidateId: string, jobId: string): boolean => {
+    return dbState.data.applications.some(
+      application => application.candidateId === candidateId && application.jobId === jobId,
+    );
+  },
   getApplicationsByCandidate: (candidateId: string): Application[] => {
     return dbState.data.applications
       .filter(a => a.candidateId === candidateId)
@@ -758,10 +796,10 @@ export const db = {
 
     // PG Sync
     pgWrite(`
-      INSERT INTO notifications (id, user_id, message, type, read, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO notifications (id, user_id, message, type, read, created_at, email_sent_to)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (id) DO NOTHING
-    `, [notification.id, notification.userId, notification.message, notification.type, notification.read || false, notification.createdAt]);
+    `, [notification.id, notification.userId, notification.message, notification.type, notification.read || false, notification.createdAt, notification.emailSentTo || null]);
 
     return notification;
   },

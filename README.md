@@ -1,20 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# TrabajoLocal
 
-# Run and deploy your AI Studio app
+Bolsa de empleo especializada en marketing digital, copywriting, redacción web, social media, producción audiovisual y animación 2D/3D. Incluye perfiles de candidato y reclutador, seguimiento de candidaturas, adaptación de CV con Gemini e importación desde fuentes públicas.
 
-This contains everything you need to run your app locally.
+## Desarrollo local
 
-View your app in AI Studio: https://ai.studio/apps/da0749c1-6e87-42ab-a210-343a1aacb315
+Requiere Node.js 20 o posterior.
 
-## Run Locally
+```powershell
+npm ci
+Copy-Item .env.example .env
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+La aplicación se sirve en `http://localhost:3000`. `DATABASE_URL` activa PostgreSQL; si se deja vacío se utiliza `db.json`. `GEMINI_API_KEY` solo es necesaria para las funciones de IA. En producción es obligatorio definir un `APP_ACCESS_CODE` largo y aleatorio.
 
+## Fuentes de empleo
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+La sincronización diaria utiliza feeds públicos documentados de Remotive, Jobicy, We Work Remotely y Remote OK. Las ofertas conservan la atribución y el enlace original. El backend descarta puestos fuera de los nichos admitidos y bloquea feeds de dominios no autorizados.
+
+## Verificación
+
+```bash
+npm test       # pruebas de fuentes, relevancia y seguridad
+npm run lint   # comprobación TypeScript
+npm run build  # cliente y servidor de producción
+```

@@ -40,6 +40,8 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('trinidadsuarez@gmail.com');
   const [authName, setAuthName] = useState('Trinidad Suárez');
   const [authRole, setAuthRole] = useState<'candidate' | 'recruiter'>('candidate');
+  const [authAccessCode, setAuthAccessCode] = useState('');
+  const [authError, setAuthError] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   // Core Data States
@@ -81,7 +83,7 @@ export default function App() {
     fetchJobs();
   }, [searchLocation, selectedIndustry, selectedType, salaryMin]);
 
-  // 3. Polling and Sync Data: Runs every 4 seconds to simulate real-time notifications & statuses
+  // 3. Refresh lightweight user data periodically without overloading the API.
   useEffect(() => {
     if (!currentUser) return;
 
@@ -91,7 +93,7 @@ export default function App() {
     const interval = setInterval(() => {
       fetchNotifications();
       fetchApplications();
-    }, 4000);
+    }, 30_000);
 
     return () => clearInterval(interval);
   }, [currentUser?.id, currentUser?.role]);
@@ -118,12 +120,11 @@ export default function App() {
 
       const res = await fetch(`/api/jobs?${queryParams.toString()}`);
       if (res.ok) {
-        const data = await res.json();
+        const data: Job[] = await res.json();
         setJobs(data);
-        // Default select first job if none selected
-        if (data.length > 0 && !selectedJob) {
-          setSelectedJob(data[0]);
-        }
+        setSelectedJob(current =>
+          data.find(job => job.id === current?.id) ?? data[0] ?? null,
+        );
       }
     } catch (e) {
       console.error("Error fetching jobs:", e);
@@ -136,8 +137,7 @@ export default function App() {
   const fetchApplications = async () => {
     if (!currentUser) return;
     try {
-      const paramName = currentUser.role === 'candidate' ? 'candidateId' : 'recruiterId';
-      const res = await fetch(`/api/applications?${paramName}=${currentUser.id}`);
+      const res = await fetch('/api/applications');
       if (res.ok) {
         const data = await res.json();
         setApplications(data);
@@ -151,7 +151,7 @@ export default function App() {
   const fetchNotifications = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/notifications?userId=${currentUser.id}`);
+      const res = await fetch('/api/notifications');
       if (res.ok) {
         const data = await res.json();
         setNotifications(data);
@@ -164,16 +164,20 @@ export default function App() {
   // Login handler
   const handleLogin = async (email: string, name?: string, role?: 'candidate' | 'recruiter') => {
     setIsAuthLoading(true);
+    setAuthError('');
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, role })
+        body: JSON.stringify({ email, name, role, accessCode: authAccessCode })
       });
       if (res.ok) {
         const user = await res.json();
         setCurrentUser(user);
         setSelectedJob(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setAuthError(data.error || 'No se pudo iniciar sesión.');
       }
     } catch (e) {
       console.error("Login failed:", e);
@@ -183,7 +187,12 @@ export default function App() {
   };
 
   // Logout handler
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
     setCurrentUser(null);
     setApplications([]);
     setNotifications([]);
@@ -332,7 +341,7 @@ export default function App() {
       const res = await fetch('/api/notifications/read-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id })
+        body: JSON.stringify({})
       });
       if (res.ok) {
         fetchNotifications();
@@ -393,7 +402,7 @@ export default function App() {
                 <Briefcase className="h-6 w-6" />
               </div>
               <h2 className="font-display text-xl font-bold text-gray-900">Acceso a TrabajoLocal</h2>
-              <p className="text-xs text-gray-500">Ingresa tu correo para comenzar a localizar ofertas o publicar vacantes</p>
+              <p className="text-xs text-gray-500">Identifícate para localizar ofertas o publicar vacantes</p>
             </div>
 
             <div className="space-y-4">
@@ -431,6 +440,25 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Código de acceso</label>
+                <input
+                  type="password"
+                  value={authAccessCode}
+                  onChange={(e) => setAuthAccessCode(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Configurado por el administrador"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-xs text-gray-800 focus:border-indigo-500 focus:bg-white focus:outline-none"
+                />
+                <p className="mt-1 text-[10px] text-gray-400">En desarrollo puede dejarse vacío.</p>
+              </div>
+
+              {authError && (
+                <p role="alert" className="rounded-lg bg-red-50 p-2.5 text-xs font-medium text-red-700">
+                  {authError}
+                </p>
+              )}
 
               <button
                 onClick={() => handleLogin(authEmail, authName, authRole)}
@@ -626,7 +654,9 @@ export default function App() {
                             </span>
                             <span className="flex items-center gap-0.5">
                               <DollarSign className="h-3.5 w-3.5 text-gray-400" />
-                              {formatSalary(selectedJob.salaryMin)} - {formatSalary(selectedJob.salaryMax)}
+                              {selectedJob.salaryMax > 0
+                                ? `${formatSalary(selectedJob.salaryMin)} - ${formatSalary(selectedJob.salaryMax)}`
+                                : 'Salario no indicado'}
                             </span>
                             <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 uppercase">
                               {selectedJob.industry}
@@ -646,7 +676,9 @@ export default function App() {
                           <div className="rounded-xl border border-indigo-100 bg-indigo-50/20 p-4 flex items-center justify-between gap-4">
                             <div className="space-y-0.5">
                               <h4 className="text-xs font-bold text-indigo-950">Enlace Original</h4>
-                              <p className="text-[11px] text-indigo-700">Puedes consultar la oferta completa y postularte directamente en la fuente oficial.</p>
+                              <p className="text-[11px] text-indigo-700">
+                                Fuente: {selectedJob.source || 'portal original'}. Consulta la oferta completa y postúlate directamente allí.
+                              </p>
                             </div>
                             <a
                               href={selectedJob.url}

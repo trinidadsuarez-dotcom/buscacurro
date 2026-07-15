@@ -29,12 +29,15 @@ interface JobWebImporterModalProps {
 }
 
 const PRESET_FEEDS = [
-  { name: 'WeWorkRemotely - Marketing', url: 'https://weworkremotely.com/categories/remote-marketing-jobs.rss' },
-  { name: 'WeWorkRemotely - Copywriting & Content', url: 'https://weworkremotely.com/categories/remote-copywriting-jobs.rss' },
-  { name: 'WeWorkRemotely - Design & Creative', url: 'https://weworkremotely.com/categories/remote-design-jobs.rss' },
-  { name: 'Jobicy - Marketing', url: 'https://jobicy.com/feed/marketing' },
-  { name: 'Jobicy - Writing', url: 'https://jobicy.com/feed/writing' },
-  { name: 'Jobicy - Design & Creative', url: 'https://jobicy.com/feed/design' }
+  { name: 'WWR · Marketing', url: 'https://weworkremotely.com/categories/remote-sales-and-marketing-jobs.rss' },
+  { name: 'WWR · Diseño', url: 'https://weworkremotely.com/categories/remote-design-jobs.rss' },
+  { name: 'Jobicy · Copywriting', url: 'https://jobicy.com/jobs/feed?industry=copywriting' },
+  { name: 'Jobicy · Marketing', url: 'https://jobicy.com/jobs/feed?industry=marketing' },
+  { name: 'Jobicy · SEO', url: 'https://jobicy.com/jobs/feed?industry=seo' },
+  { name: 'Jobicy · Social Media', url: 'https://jobicy.com/jobs/feed?industry=smm' },
+  { name: 'Jobicy · Vídeo/Audio', url: 'https://jobicy.com/jobs/feed?industry=video-audio-production' },
+  { name: 'Jobicy · Animación', url: 'https://jobicy.com/jobs/feed?industry=design-multimedia&tag=animation' },
+  { name: 'Remote OK · Creatividad', url: 'https://remoteok.com/remote-jobs.rss?tags=marketing,copywriting,social-media,video,animation' },
 ];
 
 export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
@@ -50,8 +53,8 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
   const [importedJobs, setImportedJobs] = useState<Job[]>([]);
 
   // Tab State Values
-  const [apiQuery, setApiQuery] = useState('react');
-  const [rssUrl, setRssUrl] = useState('https://weworkremotely.com/categories/remote-marketing-jobs.rss');
+  const [apiQuery, setApiQuery] = useState('marketing');
+  const [rssUrl, setRssUrl] = useState(PRESET_FEEDS[0].url);
   const [scrapeUrl, setScrapeUrl] = useState('');
   const [rawContent, setRawContent] = useState('');
   const [showRawContentInput, setShowRawContentInput] = useState(false);
@@ -364,11 +367,9 @@ export const JobWebImporterModal: React.FC<JobWebImporterModalProps> = ({
                       placeholder="https://servidor.com/feed-empleo.xml"
                       className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 font-mono text-gray-600"
                     />
-                    {rssUrl.includes("google.com/search") || rssUrl.includes("google.es/search") || rssUrl.includes("google.cl/search") || rssUrl.includes("google.com.mx/search") ? (
-                      <p className="text-[10px] text-amber-600 font-medium animate-pulse">
-                        ✨ ¡Búsqueda de Google detectada! El sistema la convertirá automáticamente a un canal RSS de empleo para evitar bloqueos.
-                      </p>
-                    ) : null}
+                    <p className="text-[10px] text-gray-400">
+                      Por seguridad solo se aceptan feeds oficiales de Jobicy, We Work Remotely, Remote OK y Remotive.
+                    </p>
                   </div>
 
                   {/* Toggle Use AI */}
