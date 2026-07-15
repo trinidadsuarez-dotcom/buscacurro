@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, Job, Application, Notification, ApplicationStatus } from './types.ts';
 import { Header } from './components/Header.tsx';
 import { JobCard } from './components/JobCard.tsx';
@@ -43,6 +43,7 @@ export default function App() {
   const [authAccessCode, setAuthAccessCode] = useState('');
   const [authError, setAuthError] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const authBootstrapStarted = useRef(false);
 
   // Core Data States
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -73,9 +74,34 @@ export default function App() {
   const [profileCVText, setProfileCVText] = useState('');
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
 
-  // 1. AUTO-LOGIN user Trinidad Suárez on initial mount
+  // 1. Auto-login the demo candidate only when the server has no access-code gate.
   useEffect(() => {
-    handleLogin('trinidadsuarez@gmail.com', 'Trinidad Suárez', 'candidate');
+    if (authBootstrapStarted.current) return;
+    authBootstrapStarted.current = true;
+
+    const bootstrapAuth = async () => {
+      try {
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        if (!config.authEnabled) {
+          setAuthError('El acceso está deshabilitado: configura APP_ACCESS_CODE en el servidor.');
+          return;
+        }
+        if (!config.requiresAccessCode) {
+          await handleLogin(
+            'trinidadsuarez@gmail.com',
+            'Trinidad Suárez',
+            'candidate',
+            '',
+          );
+        }
+      } catch (error) {
+        console.error('Auth bootstrap failed:', error);
+        setAuthError('No se pudo consultar la configuración de acceso.');
+      }
+    };
+
+    bootstrapAuth();
   }, []);
 
   // 2. Fetch jobs when filters change
@@ -162,14 +188,24 @@ export default function App() {
   };
 
   // Login handler
-  const handleLogin = async (email: string, name?: string, role?: 'candidate' | 'recruiter') => {
+  const handleLogin = async (
+    email: string,
+    name?: string,
+    role?: 'candidate' | 'recruiter',
+    accessCodeOverride?: string,
+  ) => {
     setIsAuthLoading(true);
     setAuthError('');
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, role, accessCode: authAccessCode })
+        body: JSON.stringify({
+          email,
+          name,
+          role,
+          accessCode: accessCodeOverride ?? authAccessCode,
+        })
       });
       if (res.ok) {
         const user = await res.json();

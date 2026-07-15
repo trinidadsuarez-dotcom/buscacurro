@@ -139,6 +139,13 @@ app.post("/api/auth/login", loginRateLimit, (req, res) => {
   res.json(user);
 });
 
+app.get('/api/config', (req, res) => {
+  res.json({
+    requiresAccessCode: Boolean(appAccessCode),
+    authEnabled: process.env.NODE_ENV !== 'production' || Boolean(appAccessCode),
+  });
+});
+
 app.post('/api/auth/logout', authenticate, (req, res) => {
   destroySession(req, res);
   res.json({ success: true });
@@ -795,7 +802,6 @@ function parseRssXmlManually(xmlText: string, feedUrl: string = ''): any[] {
 app.post(
   "/api/jobs/import-external",
   authenticate,
-  requireRole('recruiter'),
   importRateLimit,
   async (req, res) => {
   const { mode, query, rssUrl, scrapeUrl, rawContent, useAi } = req.body;
